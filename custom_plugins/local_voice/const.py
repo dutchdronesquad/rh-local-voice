@@ -9,6 +9,9 @@ VOICE_MODEL_OPTION = f"{PLUGIN_PREFIX}_voice_model"
 SPEECH_SPEED_OPTION = f"{PLUGIN_PREFIX}_speech_speed"
 TEST_PHRASE_OPTION = f"{PLUGIN_PREFIX}_test_phrase"
 
+# Audio profile toggles
+ENABLE_CROSSING_BEEPS_OPTION = f"{PLUGIN_PREFIX}_enable_crossing_beeps"
+
 DEFAULT_TEST_PHRASE = "RotorHazard local voice test"
 DEFAULT_MODEL = "en_GB-alan-medium"
 DEFAULT_SPEED = "1.0"

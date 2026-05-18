@@ -1,10 +1,12 @@
 [project]
 name = "local-voice"
 version = "0.1.0"
-description = "Add your description here"
+description = "RotorHazard plugin for fully local server-side voice callout WAV generation"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "piper-tts>=1.4.2",
+]
 
 [dependency-groups]
 dev = [

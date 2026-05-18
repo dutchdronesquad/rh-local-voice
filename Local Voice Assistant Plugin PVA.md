@@ -45,10 +45,10 @@ with wave.open("out.wav", "wb") as f:
     voice.synthesize("Pilot 1, Lap 3", f)
 ```
 
-**Pro:** no subprocess startup overhead, no binary path to manage, same install path as other Python dependencies.  
+**Pro:** no subprocess startup overhead, no binary path to manage, same install path as other Python dependencies.
 **Model download:** the plugin downloads the selected voice model automatically from the Piper release repository on first use (or when the model is changed). Models are cached in `~/rh-data/local_voice_cache/models/`. Internet is only needed once per model; race operation is fully offline after that.
 
-**Supported languages:** English and Dutch to start. Recommended default models: `en_GB-alan-medium` (English) and `nl_NL-mls-medium` (Dutch). The plugin setting shows a dropdown of available models grouped by language; the operator picks one per installation.  
+**Supported languages:** English and Dutch to start. Recommended default models: `en_GB-alan-medium` (English) and `nl_NL-mls-medium` (Dutch). The plugin setting shows a dropdown of available models grouped by language; the operator picks one per installation.
 **Mitigation for synthesis latency:** pre-generate all predictable phrases at heat load (pilot names, lap numbers 1–20, "Race Start", "Race Stop", "Winner is", countdown). Real-time synthesis only for unexpected text.
 
 ### Wyoming Piper (upgrade path)
@@ -159,7 +159,7 @@ The plugin cannot take over the built-in Audio Control tab. The operating model 
 3. Run a SendSpin player on the device connected to the speakers.
 4. On every regular RotorHazard browser client: set Voice Volume to 0 and disable browser beeps if the plugin handles beeps.
 
-**Built-in Audio Control → used only to silence browser clients**  
+**Built-in Audio Control → used only to silence browser clients**
 **Plugin Audio Profile → decides what the speakers announce**
 
 Plugin audio profile mirrors the familiar RH categories:

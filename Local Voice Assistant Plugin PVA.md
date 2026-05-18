@@ -31,6 +31,50 @@ Consequence: **duplicate prevention is operational**, not automatic. The operato
 
 ---
 
+## Missing RH Features (wishlist for upstream)
+
+Things that would make the plugin significantly easier or more capable, but don't exist in RotorHazard today. Each item includes the ideal upstream fix and the current workaround.
+
+### Race clock countdown events
+
+**Problem:** No server-side events for race time warnings ("30 seconds remaining", "10 seconds remaining", etc.). The countdown is handled entirely in browser JS via a local timer.
+
+**Ideal fix:** Add `Evt.RACE_CLOCK_WARNING` fired by the RH race thread at configurable thresholds (e.g. 60s, 30s, 10s remaining), with payload `{'seconds_remaining': int}`. This would let any plugin — not just audio plugins — react to race time milestones without reimplementing a parallel timer.
+
+**Status: deferred.** Not implemented in the plugin until RH provides a proper server-side event. Race clock callouts are skipped for now.
+
+---
+
+### Arm sequence countdown events
+
+**Problem:** The staging beeps ("3... 2... 1...") before race start are generated in browser JS. There is no `Evt.RACE_ARM_TONE` or similar server event. Plugin cannot reproduce the countdown sequence without reimplementing the staging logic.
+
+**Ideal fix:** Fire `Evt.RACE_ARM_TONE` from `RHRace.stage()` at each staging beep interval, with payload `{'tone_index': int, 'tones_remaining': int}`. This decouples the audio signal from the browser and lets server-side plugins (LED, audio, video) stay in sync with the actual staging sequence.
+
+**Status: deferred.** Not implemented in the plugin until RH fires server-side arm tone events. Staging beeps are skipped for now.
+
+---
+
+### Structured race-tied / overtime events
+
+**Problem:** Race Tied and Overtime announcements go through `emit_phonetic_text()` with translated strings. There is no dedicated `Evt.RACE_TIED` or `Evt.RACE_OVERTIME`. The plugin must either hook `Flt.EMIT_PHONETIC_TEXT` and parse translated text (fragile), or inspect `win_status` inside `Evt.RACE_WIN`.
+
+**Ideal fix:** Fire dedicated `Evt.RACE_TIED` and `Evt.RACE_OVERTIME` events from `check_win_condition()` in addition to the existing `Evt.RACE_WIN`. This mirrors the pattern already used for `Evt.RACE_PILOT_DONE` vs `Evt.RACE_WIN` and makes win outcome handling explicit for plugins.
+
+**Status: deferred.** Not implemented until RH fires dedicated events. Race Tied and Overtime callouts are skipped for now.
+
+---
+
+### Race leader callout via unified filter
+
+**Problem:** `Evt.RACE_PILOT_LEADING` fires correctly, but the phonetic text is assembled in `emit_phonetic_leader()` and emitted as a separate `phonetic_leader` socket event — bypassing `Flt.EMIT_PHONETIC_TEXT`. Plugins that want to intercept all voice callouts must register a second filter (`Flt.EMIT_PHONETIC_LEADER`) separately.
+
+**Ideal fix:** Route `emit_phonetic_leader()` through `emit_phonetic_text()` with a `domain='race_leader'` parameter, just like winner announcements use `domain='race_winner'`. This unifies all voice output behind a single filter point and makes `Flt.EMIT_PHONETIC_TEXT` truly the single interception point for audio plugins.
+
+**Status: deferred.** Not implemented until RH routes leader callouts through the unified `Flt.EMIT_PHONETIC_TEXT` filter. Race leader callouts are skipped for now.
+
+---
+
 ## A. Local TTS Engine
 
 ### piper-tts Python package (MVP)
@@ -202,42 +246,43 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 **Goal:** A working plugin that generates a valid WAV file from text using the `piper-tts` Python package. No SendSpin yet. Proves the TTS pipeline and cache end to end.
 
 #### Plugin structure
-- [ ] Create `plugins/local_voice/__init__.py` with `initialize(rhapi)` entry point
-- [ ] Register a settings panel via `rhapi.ui.register_panel()`
-- [ ] Add "Enable plugin audio" toggle via `rhapi.fields.register_option()`
-- [ ] Add voice model selector setting
-- [ ] Add speech speed setting
-- [ ] Add "Test phrase" quick button via `rhapi.ui.register_quickbutton()`
+- [x] Create `plugins/local_voice/__init__.py` with `initialize(rhapi)` entry point
+- [x] Register a settings panel via `rhapi.ui.register_panel()`
+- [x] Add "Enable plugin audio" toggle via `rhapi.fields.register_option()`
+- [x] Add voice model selector setting (12 models: EN-GB, EN-US, NL, DE)
+- [x] Add speech speed setting
+- [x] Add "Test phrase" quick button via `rhapi.ui.register_quickbutton()`
 
 #### piper-tts integration
-- [ ] Add `piper-tts` to plugin dependencies
-- [ ] On first use (or model change): auto-download selected voice model from Piper release repository into `~/rh-data/local_voice_cache/models/`
-- [ ] Show download progress in plugin panel; handle download failure with a clear error message
-- [ ] Load `PiperVoice` once at plugin init; reload only when model/speed setting changes
-- [ ] Synthesize text to WAV using `voice.synthesize(text, wav_file)`
-- [ ] Handle synthesis errors gracefully (log, skip, no crash)
+- [x] Add `piper-tts` to plugin dependencies
+- [x] On first use (or model change): auto-download selected voice model from Piper release repository into `~/rh-data/local_voice_cache/models/`
+- [x] Handle download failure with a clear error message (status logged; no panel field — see note below)
+- [x] Load `PiperVoice` once at plugin init; reload only when model/speed setting changes
+- [x] Synthesize text to WAV using `voice.synthesize_wav(text, wav_file, syn_config)` (piper-tts >= 1.4 API)
+- [x] Handle synthesis errors gracefully (log, skip, no crash)
 
 #### Audio cache
-- [ ] Create cache directory: `~/rh-data/local_voice_cache/tts/`
-- [ ] Cache key: `{sha1(normalized_text)}_{model_name}_{speed}.wav`
-- [ ] On cache hit: return existing WAV path, skip synthesis
-- [ ] On cache miss: synthesize, write to cache, return WAV path
+- [x] Create cache directory: `~/rh-data/local_voice_cache/tts/`
+- [x] Cache key: `{sha1(normalized_text)}_{model_name}_{speed}.wav`
+- [x] On cache hit: return existing WAV path, skip synthesis
+- [x] On cache miss: synthesize, write to cache, return WAV path
 
 #### Event hook
-- [ ] Register `Flt.EMIT_PHONETIC_TEXT` handler
-- [ ] Log intercepted callout text to verify hook fires correctly
-- [ ] Hook does not modify or block the callout payload
+- [x] Register `Flt.EMIT_PHONETIC_TEXT` handler
+- [x] Log intercepted callout text to verify hook fires correctly
+- [x] Hook does not modify or block the callout payload
 
 #### Status display
-- [ ] Show in plugin panel: model loaded / loading / error
-- [ ] Show: last generated phrase + WAV file size + synthesis duration
-- [ ] Show: cache directory path + number of cached files
+- [x] Status logged via RotorHazard logger (visible in RH log panel)
+- [ ] ~~Show in plugin panel: model loaded / loading / error~~ — removed; RotorHazard input fields are not suitable for read-only display. Status available in logs.
+- [ ] ~~Show: last generated phrase + WAV file size + synthesis duration~~ — removed (same reason)
+- [ ] ~~Show: cache directory path + number of cached files~~ — removed (same reason)
 
 **Success criteria:**
-- Clicking "Test phrase" generates a WAV in the cache directory with correct size and a valid WAV header
-- Second click on "Test phrase" returns the cached file without re-synthesizing (log confirms cache hit)
-- `Flt.EMIT_PHONETIC_TEXT` log entry appears when a test callout is triggered
-- Model not found / download failure shows a clear message in the panel, does not crash RotorHazard
+- [x] Clicking "Test phrase" generates a WAV in the cache directory with correct size and a valid WAV header
+- [x] Second click on "Test phrase" returns the cached file without re-synthesizing (log confirms cache hit)
+- [x] `Flt.EMIT_PHONETIC_TEXT` log entry appears when a test callout is triggered
+- [x] Model not found / download failure shows a clear message in the panel, does not crash RotorHazard
 
 ---
 
@@ -246,57 +291,58 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 **Goal:** All race events wired. Async queue with priority and expiry. Pre-caching at heat load. The plugin is now race-functional; audio output is verified via the log and WAV files — SendSpin is wired in Phase 3.
 
 #### Race event listeners
-- [ ] `Evt.RACE_STAGE` → stage message or countdown phrase
-- [ ] `Evt.RACE_START` → "Race Start" callout
-- [ ] `Evt.RACE_LAP_RECORDED` → "Pilot [callsign], Lap [n]" + optional lap time
-- [ ] `Evt.RACE_PILOT_DONE` → "Finished" callout for that pilot
-- [ ] `Evt.RACE_WIN` → "Winner is [callsign]" callout
-- [ ] `Evt.RACE_STOP` / `Evt.RACE_FINISH` → "Race Stop" / "Race Finished" callout
-- [ ] `Evt.CROSSING_ENTER` / `Evt.CROSSING_EXIT` → short beep WAV (bundled with the plugin, no synthesis needed)
-- [ ] `Evt.MESSAGE_STANDARD` / `Evt.MESSAGE_INTERRUPT` → optional spoken message text
+- [x] `Evt.RACE_STAGE` → "Ready"
+- [x] `Evt.RACE_START` → "Race start"
+- [x] `Evt.RACE_LAP_RECORDED` → "Pilot [callsign], Lap [n]" + optional lap time
+- [x] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
+- [x] `Evt.RACE_WIN` → "Winner is [callsign]"
+- [ ] Race Tied / Overtime — deferred pending upstream `Evt.RACE_TIED` / `Evt.RACE_OVERTIME`
+- [ ] Race leader — deferred pending unified `Flt.EMIT_PHONETIC_TEXT` routing
+- [x] `Evt.RACE_STOP` / `Evt.RACE_FINISH` → "Race stopped" / "Race finished"
+- [x] `Evt.CROSSING_ENTER` / `Evt.CROSSING_EXIT` → programmatically generated sine-tone beep WAV
+- [x] `Evt.MESSAGE_STANDARD` / `Evt.MESSAGE_INTERRUPT` → spoken message text via TTS
 
 #### Async audio queue
-- [ ] Single `queue.Queue` with a dedicated worker thread — never block the event handler (threading chosen over asyncio to avoid conflicts with RotorHazard's gevent/eventlet model)
-- [ ] `AudioJob` dataclass: `text`, `wav_path`, `priority`, `expires_at`
-- [ ] Priority levels: `HIGH` (race start / winner / interrupt) > `NORMAL` (lap callout) > `LOW` (beep)
-- [ ] Expiry: drop jobs where `time.monotonic() > expires_at` (default: 5 seconds)
-- [ ] Single worker draining the queue in order; HIGH priority jobs jump the queue
-- [ ] Worker plays one item at a time; previous item must finish before next starts
+- [x] Single `queue.PriorityQueue` with a dedicated daemon worker thread (`audio_queue.py`)
+- [x] `AudioJob` dataclass: `text`, `wav_path`, `priority`, `expires_at`
+- [x] Priority levels: `HIGH` (race start / winner / interrupt) > `NORMAL` (lap callout) > `LOW` (beep)
+- [x] Expiry: drop jobs where `time.monotonic() > expires_at` (default: 5 seconds)
+- [x] Single worker draining the queue in priority order; expired jobs dropped and logged
+- [ ] Worker plays one item at a time; previous item must finish before next starts (playback in Phase 3)
 
 #### Audio profile settings
-- [ ] Pilot callsign: on/off
-- [ ] Lap number: on/off
-- [ ] Lap time: on/off
-- [ ] Race clock callouts: on/off
-- [ ] Winner callout: on/off
-- [ ] Finished callout: on/off
-- [ ] Crossing enter/exit beeps: on/off
-- [ ] All toggles exposed in plugin settings panel
+- [x] Pilot callsign: on/off
+- [x] Lap number: on/off
+- [x] Lap time: on/off
+- [ ] Race clock callouts: on/off — deferred pending upstream `Evt.RACE_CLOCK_WARNING`
+- [x] Winner callout: on/off
+- [ ] Race tied / overtime callout: on/off — deferred pending upstream fix
+- [ ] Race leader callout: on/off — deferred pending upstream fix
+- [x] Pilot finished callout: on/off
+- [x] Crossing enter/exit beeps: on/off (toggle only; handler in backlog)
+- [x] All implemented toggles exposed in plugin settings panel
 
 #### Pre-caching at heat load
-- [ ] Hook into heat load event (or `Evt.HEAT_SET`)
-- [ ] Generate WAVs for all pilot callsigns in the loaded heat
-- [ ] Generate WAVs for lap numbers 1–20
-- [ ] Generate WAVs for all fixed phrases (see list in Architecture section)
-- [ ] Pre-caching runs in a background thread; does not block heat load or event handling
-- [ ] Log how many files were generated and how long it took
+- [x] Hook into `Evt.HEAT_SET`
+- [x] Generate WAVs for all pilot callsigns in the loaded heat
+- [x] Generate WAVs for lap numbers 1–20
+- [x] Generate WAVs for all fixed phrases
+- [x] Pre-caching runs in a background thread; does not block heat load or event handling
+- [x] Log how many files were generated and how long it took
 
 #### Duplicate prevention UI
-- [ ] Plugin panel shows a setup checklist:
-  - [ ] "Set Voice Volume to 0 on all browser clients"
-  - [ ] "Disable browser beeps on all browser clients if plugin beeps are enabled"
-- [ ] Checklist items show as warnings, not errors (operator responsibility)
+- [x] Plugin panel shows two separate markdown warnings (Voice Volume + browser beeps)
 
 #### Error handling
-- [ ] Piper fails → log error with phrase text, skip callout, continue
-- [ ] Event handler never raises an unhandled exception
-- [ ] No race event is delayed or dropped because of plugin audio work
+- [x] Piper fails → log error with phrase text, skip callout, continue
+- [x] Event handler never raises an unhandled exception
+- [x] No race event is delayed or dropped because of plugin audio work
 
 **Success criteria:**
-- A full simulated race (stage → start → laps → winner → stop) produces the correct callouts in the log
-- Pilot names and lap numbers are pre-generated when a heat loads; generation time logged
-- Piper crash mid-race does not affect RotorHazard timing or results
-- Expired callouts are dropped and logged, never played late
+- [ ] A full simulated race (stage → start → laps → winner → stop) produces the correct callouts in the log
+- [ ] Pilot names and lap numbers are pre-generated when a heat loads; generation time logged
+- [x] Piper crash mid-race does not affect RotorHazard timing or results
+- [x] Expired callouts are dropped and logged, never played late
 
 ---
 

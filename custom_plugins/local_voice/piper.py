@@ -34,7 +34,11 @@ class SynthesisResult:
 
 
 class PiperSynthesizer:
-    """Generate local WAV files with Piper and cache them by phrase/model/speed."""
+    """Generate local WAV files with Piper and cache them by phrase/speed.
+
+    WAV files are stored under ``tts_dir/{model_name}/{sha1}_{speed}.wav``
+    so that switching voice models never causes stale-cache collisions.
+    """
 
     def __init__(
         self,
@@ -57,15 +61,25 @@ class PiperSynthesizer:
         text: str,
         model_name: str,
         speed: str,
+        *,
+        ephemeral: bool = False,
     ) -> SynthesisResult | None:
-        """Return a cached WAV for text, synthesizing it with Piper if needed."""
+        """Return a cached WAV for text, synthesizing it with Piper if needed.
+
+        When *ephemeral* is True the WAV is written to a ``tmp/`` subdirectory
+        that can be wiped safely between heats.
+        """
         normalized_text = self.normalize_text(text)
         if not normalized_text:
             self._set_status("No text supplied")
             return None
 
-        cache_key = self.cache_key(normalized_text, model_name, speed)
-        wav_path = self._tts_dir / f"{cache_key}.wav"
+        cache_key = self.cache_key(normalized_text, speed)
+        model_tts_dir = self._tts_dir / model_name
+        if ephemeral:
+            model_tts_dir = model_tts_dir / "tmp"
+        model_tts_dir.mkdir(parents=True, exist_ok=True)
+        wav_path = model_tts_dir / f"{cache_key}.wav"
         started = time.perf_counter()
 
         if wav_path.exists() and self.valid_wav(wav_path):
@@ -106,9 +120,17 @@ class PiperSynthesizer:
             cache_hit=False,
         )
 
+    def tts_dir_for_model(self, model_name: str) -> Path:
+        """Return the cache subdirectory for a specific model."""
+        return self._tts_dir / model_name
+
+    def tmp_dir_for_model(self, model_name: str) -> Path:
+        """Return the ephemeral tmp subdirectory for a specific model."""
+        return self._tts_dir / model_name / "tmp"
+
     def cache_status_text(self) -> str:
-        """Return cache directory and file-count status."""
-        cached_files = sum(1 for path in self._tts_dir.glob("*.wav") if path.is_file())
+        """Return cache directory and total file-count status."""
+        cached_files = sum(1 for path in self._tts_dir.rglob("*.wav") if path.is_file())
         return f"{self._tts_dir} | {cached_files} cached WAV files"
 
     def _load_voice(self, model_name: str) -> Any | None:
@@ -196,10 +218,10 @@ class PiperSynthesizer:
         return " ".join(normalized.split())
 
     @staticmethod
-    def cache_key(text: str, model_name: str, speed: str) -> str:
-        """Build the configured SHA1-based WAV cache key."""
+    def cache_key(text: str, speed: str) -> str:
+        """Build a SHA1-based WAV cache key from text and speed."""
         digest = hashlib.sha1(text.lower().encode("utf-8")).hexdigest()  # noqa: S324
-        return f"{digest}_{model_name}_{speed}"
+        return f"{digest}_{speed}"
 
     @staticmethod
     def valid_wav(path: Path) -> bool:

@@ -1,0 +1,10 @@
+{
+  "domain": "local_voice",
+  "name": "Local Voice",
+  "author": "RotorHazard",
+  "license": "MIT",
+  "description": "A template plugin for creating custom plugins for the RotorHazard project.",
+  "documentation_uri": "https://github.com/dutchdronesquad/rh-local-voice",
+  "required_rhapi_version": "1.0",
+  "version": "0.1.0"
+}

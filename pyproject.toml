@@ -1,0 +1,37 @@
+[project]
+name = "local-voice"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pre-commit-hooks==6.0.0",
+  "prek==0.4.0",
+  "ruff==0.15.13",
+]
+
+[tool.ruff]
+target-version = "py312"
+lint.select = ["ALL"]
+lint.ignore = [
+  "ARG001",  # Unused function arguments
+  "ANN401",  # Opinionated warning on disallowing dynamically typed expressions
+
+  "D203",    # Conflicts with other rules
+  "D213",    # Conflicts with other rules
+  "D417",    # False positives in some occasions
+  "PLR2004", # Just annoying, not really useful
+  "SLOT000", # Has a bug with enums: https://github.com/astral-sh/ruff/issues/5748
+  "BLE001",  # False positives in some occasions
+  "TRY003",  # Avoid specifying long messages outside the exception
+  "EM101",   # Raw string in exception message
+
+  # Conflicts with the Ruff formatter
+  "COM812",
+
+  # Custom ignores
+  "G004",    # Allow f-string in logging
+]

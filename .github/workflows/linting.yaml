@@ -1,0 +1,58 @@
+---
+name: Linting
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DEFAULT_PYTHON: "3.13"
+
+jobs:
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.2
+      - name: 🏗 Set up UV
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: "latest"
+          python-version: ${{ env.DEFAULT_PYTHON }}
+          enable-cache: true
+      - name: 🏗 Install project dependencies
+        run: uv sync --all-extras --dev
+      - name: 🚀 Run ruff linter
+        run: uv run ruff check --output-format=github .
+      - name: 🚀 Run ruff formatter
+        run: uv run ruff format --check .
+
+  prek-hooks:
+    name: Prek hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.2
+      - name: 🏗 Set up UV
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: "latest"
+          python-version: ${{ env.DEFAULT_PYTHON }}
+          enable-cache: true
+      - name: 🏗 Install project dependencies
+        run: uv sync --all-extras --dev
+      - name: 🚀 Check Python AST
+        run: uv run prek run check-ast --all-files
+      - name: 🚀 Check for case conflicts
+        run: uv run prek run check-case-conflict --all-files
+      - name: 🚀 Check docstring is first
+        run: uv run prek run check-docstring-first --all-files
+      - name: 🚀 Detect Private Keys
+        run: uv run prek run detect-private-key --all-files
+      - name: 🚀 Check End of Files
+        run: uv run prek run end-of-file-fixer --all-files
+      - name: 🚀 Trim Trailing Whitespace
+        run: uv run prek run trailing-whitespace --all-files

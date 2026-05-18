@@ -187,4 +187,3 @@ class LocalVoicePlugin:
         """Read a RotorHazard option and fall back when it is unset."""
         value = self._rhapi.db.option(name)
         return default if value is None else value
-

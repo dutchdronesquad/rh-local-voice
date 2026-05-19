@@ -11,6 +11,7 @@ from enum import IntEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -40,11 +41,13 @@ class AudioQueue:
     """Priority queue with a single daemon worker thread.
 
     The worker drains jobs in priority order, dropping any that have
-    exceeded their expiry time. Never blocks the caller's thread.
+    exceeded their expiry time. Each ready job is handed to *player*,
+    which blocks until playback finishes before the next job is picked up.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, player: Callable[[list[Path]], None]) -> None:
         """Start the background worker thread."""
+        self._player = player
         self._queue: queue.PriorityQueue[AudioJob] = queue.PriorityQueue()
         self._thread = threading.Thread(
             target=self._worker, daemon=True, name="local_voice_audio"
@@ -68,6 +71,17 @@ class AudioQueue:
         self._queue.put(job)
         logger.debug("Local Voice queued [%s] '%s'", priority.name, text)
 
+    def clear(self) -> int:
+        """Drop queued jobs that have not started yet."""
+        count = 0
+        while True:
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                return count
+            self._queue.task_done()
+            count += 1
+
     def _worker(self) -> None:
         """Drain the queue, drop expired jobs, play ready jobs."""
         while True:
@@ -76,12 +90,12 @@ class AudioQueue:
                 if time.monotonic() > job.expires_at:
                     logger.info("Local Voice dropped expired job: '%s'", job.text)
                     continue
-                # Phase 3: hand off to SendSpin here
                 logger.info(
-                    "Local Voice audio ready [%s]: %s",
+                    "Local Voice playing [%s]: %s",
                     job.priority.name,
                     ", ".join(p.name for p in job.wav_paths),
                 )
+                self._player(job.wav_paths)
             except Exception:
                 logger.exception("Local Voice worker error for '%s'", job.text)
             finally:

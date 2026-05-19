@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Voice — Player</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0b0d14;
+      --surface:  #13151f;
+      --raised:   #1a1d2a;
+      --border:   #252838;
+      --muted:    #3a3e52;
+      --text:     #e2e8f0;
+      --subtle:   #64748b;
+      --blue:     #4f6ef7;
+      --blue-dim: #2d3f8f;
+      --green:    #22c55e;
+      --red:      #ef4444;
+      --amber:    #f59e0b;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      gap: 0;
+    }
+
+    /* ── Card ─────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 420px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ───────────────────────────────────── */
+    .header {
+      padding: 1.25rem 1.5rem 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .header-icon {
+      width: 32px; height: 32px;
+      background: var(--blue-dim);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .header-icon svg { width: 18px; height: 18px; fill: var(--blue); }
+    .header-title { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+    .header-sub   { font-size: 0.72rem; color: var(--subtle); margin-top: 1px; }
+
+    /* ── Status hero ──────────────────────────────── */
+    .status-hero {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .status-ring {
+      position: relative;
+      width: 72px; height: 72px;
+    }
+    .status-ring svg { width: 100%; height: 100%; }
+    .ring-bg  { fill: none; stroke: var(--raised); stroke-width: 4; }
+    .ring-arc {
+      fill: none; stroke: var(--muted); stroke-width: 4;
+      stroke-linecap: round;
+      stroke-dasharray: 188.5;
+      stroke-dashoffset: 0;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+      transition: stroke 0.3s, stroke-dashoffset 0.3s;
+    }
+    .ring-arc.connected { stroke: var(--green); }
+    .ring-arc.reconnecting { stroke: var(--amber); stroke-dashoffset: 47; animation: spin-arc 2s linear infinite; }
+    .ring-arc.playing   { stroke: var(--blue); stroke-dashoffset: 47; animation: spin-arc 2s linear infinite; }
+    .ring-arc.error     { stroke: var(--red); }
+
+    @keyframes spin-arc {
+      to { stroke-dashoffset: -188.5; }
+    }
+
+    .ring-dot {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ring-dot span {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .ring-dot span.connected { background: var(--green); }
+    .ring-dot span.reconnecting { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+    .ring-dot span.playing   { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+    .ring-dot span.error     { background: var(--red); }
+
+    .status-label {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--subtle);
+      text-align: center;
+      transition: color 0.3s;
+    }
+    .status-label.connected { color: var(--green); }
+    .status-label.reconnecting { color: var(--amber); }
+    .status-label.playing   { color: var(--blue); }
+    .status-label.error     { color: var(--red); }
+
+    /* ── Visualizer ───────────────────────────────── */
+    #viz {
+      width: 100%;
+      height: 36px;
+      display: none;
+    }
+
+    /* ── Body ─────────────────────────────────────── */
+    .body {
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 0.35rem; }
+    label  { font-size: 0.75rem; color: var(--subtle); letter-spacing: 0.02em; }
+
+    input[type="text"] {
+      background: var(--raised);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.85rem;
+      padding: 0.55rem 0.75rem;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s;
+      font-family: ui-monospace, monospace;
+    }
+    input[type="text"]:focus { border-color: var(--blue); }
+    input[type="text"]:disabled { color: var(--subtle); cursor: not-allowed; }
+
+    .vol-row { display: flex; align-items: center; gap: 0.75rem; }
+    .vol-icon { color: var(--subtle); flex-shrink: 0; }
+    .vol-icon svg { width: 16px; height: 16px; fill: currentColor; display: block; }
+    input[type="range"] {
+      flex: 1; accent-color: var(--blue);
+      -webkit-appearance: none; height: 4px;
+      background: var(--muted); border-radius: 2px; outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px;
+      border-radius: 50%; background: var(--blue); cursor: pointer;
+    }
+    .vol-val { font-size: 0.8rem; color: var(--subtle); min-width: 2.5rem; text-align: right; }
+
+    /* ── Button ───────────────────────────────────── */
+    .btn-wrap { padding: 0 1.5rem 1.5rem; }
+    button {
+      width: 100%;
+      background: var(--blue);
+      border: none; border-radius: 10px;
+      color: #fff; cursor: pointer;
+      font-size: 0.95rem; font-weight: 600;
+      padding: 0.8rem;
+      transition: background 0.15s, transform 0.1s;
+      letter-spacing: 0.01em;
+    }
+    button:hover  { background: #3d5ce0; }
+    button:active { transform: scale(0.98); }
+    button.danger { background: #b91c1c; }
+    button.danger:hover { background: #991b1b; }
+
+    /* ── Log ──────────────────────────────────────── */
+    .log-wrap {
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1.5rem 1rem;
+    }
+    .log-toggle {
+      font-size: 0.72rem; color: var(--subtle);
+      cursor: pointer; user-select: none;
+      display: flex; align-items: center; gap: 0.35rem;
+    }
+    .log-toggle:hover { color: var(--text); }
+    .log-toggle svg { width: 10px; height: 10px; fill: currentColor; transition: transform 0.2s; }
+    .log-toggle.open svg { transform: rotate(90deg); }
+
+    .log {
+      display: none;
+      margin-top: 0.6rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.7rem;
+      color: var(--subtle);
+      padding: 0.6rem;
+      height: 110px;
+      overflow-y: auto;
+      flex-direction: column-reverse;
+    }
+    .log.open { display: flex; }
+    .log p { line-height: 1.55; }
+    .log .info { color: #94a3b8; }
+    .log .play { color: var(--blue); }
+    .log .warn { color: var(--amber); }
+    .log .err  { color: var(--red); }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 0 1 4 4v5a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4zm-1 14.93V20H9v2h6v-2h-2v-2.07A7.001 7.001 0 0 0 19 12v-1h-2v1a5 5 0 0 1-10 0v-1H5v1a7.001 7.001 0 0 0 6 6.93z"/></svg>
+    </div>
+    <div>
+      <div class="header-title">Local Voice Player</div>
+      <div class="header-sub" id="serverName">RotorHazard</div>
+    </div>
+  </div>
+
+  <!-- Status hero -->
+  <div class="status-hero">
+    <div class="status-ring">
+      <svg viewBox="0 0 72 72">
+        <circle class="ring-bg"  cx="36" cy="36" r="30"/>
+        <circle class="ring-arc" cx="36" cy="36" r="30" id="ringArc"/>
+      </svg>
+      <div class="ring-dot"><span id="dot"></span></div>
+    </div>
+    <div class="status-label" id="statusText">Disconnected</div>
+    <canvas id="viz"></canvas>
+  </div>
+
+  <!-- Fields -->
+  <div class="body">
+    <div class="field">
+      <label for="serverUrl">Server</label>
+      <input id="serverUrl" type="text" spellcheck="false" />
+    </div>
+    <div class="field">
+      <label for="volume">Volume</label>
+      <div class="vol-row">
+        <span class="vol-icon">
+          <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        </span>
+        <input id="volume" type="range" min="0" max="100" value="80" />
+        <span class="vol-val" id="volLabel">80%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connect button -->
+  <div class="btn-wrap">
+    <button id="connectBtn">Connect</button>
+  </div>
+
+  <!-- Log (collapsible) -->
+  <div class="log-wrap">
+    <div class="log-toggle" id="logToggle">
+      <svg viewBox="0 0 10 10"><path d="M3 1l4 4-4 4"/></svg>
+      Activity log
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+// Protocol-aware URL default
+const _wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const defaultServerUrl = `${_wsProto}://${window.location.hostname}:8927/sendspin`;
+const store = window.localStorage;
+const RECONNECT_MIN_MS = 2_000;
+const RECONNECT_MAX_MS = 60_000;
+const STREAM_SCHEDULE_LEAD_S = 0.02;
+const LATE_CHUNK_GRACE_S = 0.08;
+const RESYNC_DRIFT_S = 0.18;
+
+// ---------------------------------------------------------------------------
+// UI refs
+// ---------------------------------------------------------------------------
+const ringArc  = document.getElementById('ringArc');
+const dot      = document.getElementById('dot');
+const statusEl = document.getElementById('statusText');
+const serverNm = document.getElementById('serverName');
+const btn      = document.getElementById('connectBtn');
+const urlInput = document.getElementById('serverUrl');
+const volInput = document.getElementById('volume');
+const volLabel = document.getElementById('volLabel');
+const vizCanvas = document.getElementById('viz');
+const logEl    = document.getElementById('log');
+const logToggle = document.getElementById('logToggle');
+
+urlInput.value = store.getItem('localVoice.serverUrl') || defaultServerUrl;
+const storedVolume = store.getItem('localVoice.volume');
+const savedVolume = storedVolume === null ? NaN : Number(storedVolume);
+if (storedVolume !== null && Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 100) {
+  volInput.value = String(savedVolume);
+  volLabel.textContent = `${savedVolume}%`;
+}
+
+urlInput.addEventListener('change', () => {
+  store.setItem('localVoice.serverUrl', urlInput.value.trim());
+});
+
+logToggle.addEventListener('click', () => {
+  const open = logEl.classList.toggle('open');
+  logToggle.classList.toggle('open', open);
+});
+
+function setStatus(state, text) {
+  dot.className = state;
+  ringArc.setAttribute('class', `ring-arc ${state}`);
+  statusEl.className   = `status-label ${state}`;
+  statusEl.textContent = text;
+}
+
+volInput.addEventListener('input', () => {
+  const pct = volInput.value;
+  volLabel.textContent = `${pct}%`;
+  store.setItem('localVoice.volume', pct);
+  if (player) player.setVolume(pct / 100);
+});
+
+// ---------------------------------------------------------------------------
+// Logging
+// ---------------------------------------------------------------------------
+function log(msg, cls = 'info') {
+  const now = new Date().toLocaleTimeString();
+  const p = document.createElement('p');
+  p.className = cls;
+  p.textContent = `${now}  ${msg}`;
+  logEl.prepend(p);
+  while (logEl.children.length > 60) logEl.lastChild.remove();
+}
+
+function normalizeServerUrl(input) {
+  const raw = input.trim() || defaultServerUrl;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `${_wsProto}://${raw}`;
+  const url = new URL(withScheme, window.location.href);
+  if (url.protocol === 'http:') url.protocol = 'ws:';
+  if (url.protocol === 'https:') url.protocol = 'wss:';
+  if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+    throw new Error(`Unsupported protocol: ${url.protocol}`);
+  }
+  if (url.pathname === '/' || url.pathname === '') url.pathname = '/sendspin';
+  return url.toString();
+}
+
+// ---------------------------------------------------------------------------
+// Visualizer
+// ---------------------------------------------------------------------------
+let vizRaf = null;
+
+function startViz(analyser) {
+  if (vizRaf) cancelAnimationFrame(vizRaf);
+  const W = vizCanvas.offsetWidth;
+  const H = 36;
+  vizCanvas.width  = W * devicePixelRatio;
+  vizCanvas.height = H * devicePixelRatio;
+  vizCanvas.style.display = 'block';
+  const ctx2d = vizCanvas.getContext('2d');
+  ctx2d.scale(devicePixelRatio, devicePixelRatio);
+
+  const bins = analyser.frequencyBinCount;
+  const data = new Uint8Array(bins);
+  const barW = W / bins;
+  const blue = getComputedStyle(document.documentElement)
+    .getPropertyValue('--blue').trim() || '#4f6ef7';
+
+  function draw() {
+    vizRaf = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(data);
+    ctx2d.clearRect(0, 0, W, H);
+    for (let i = 0; i < bins; i++) {
+      const v = data[i] / 255;
+      const h = Math.max(2, v * H);
+      ctx2d.fillStyle = `rgba(79,110,247,${0.3 + v * 0.7})`;
+      ctx2d.fillRect(i * barW + 1, H - h, Math.max(1, barW - 2), h);
+    }
+  }
+  draw();
+}
+
+function stopViz() {
+  if (vizRaf) { cancelAnimationFrame(vizRaf); vizRaf = null; }
+  vizCanvas.style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
+// SendSpin player
+// ---------------------------------------------------------------------------
+class SendSpinPlayer {
+  constructor(url) {
+    this._url          = url;
+    this._ws           = null;
+    this._ctx          = null;
+    this._gain         = null;
+    this._analyser     = null;
+    this._format       = null;
+    this._nextScheduledAt = 0;
+    this._pendingChunks = [];
+    this._sources      = new Set();
+    // Clock sync: offset (µs) so that server_time = performance.now()*1000 - _serverOffset
+    this._serverOffset = 0;
+    this._timeSynced = false;
+    this._clientId = typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+          (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+    this._syncTimer = null;
+    this._reconnectTimer = null;
+    this._reconnectDelay = RECONNECT_MIN_MS;
+    this._manualClose = false;
+  }
+
+  connect() {
+    this._manualClose = false;
+    this._unlockAudio();
+    this._connectSocket();
+  }
+
+  disconnect() {
+    this._manualClose = true;
+    clearTimeout(this._reconnectTimer);
+    clearInterval(this._syncTimer);
+    this._clearPlayback(false);
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._send({ type: 'client/goodbye', payload: { reason: 'user_request' } });
+    }
+    const ws = this._ws;
+    const ctx = this._ctx;
+    this._ws = this._ctx = this._gain = this._analyser = null;
+    // Give the send buffer a moment to flush before closing.
+    setTimeout(() => { ws?.close(1000, 'user_request'); ctx?.close(); }, 50);
+  }
+
+  setVolume(v) {
+    if (this._gain) this._gain.gain.value = v;
+    this._sendPlayerState();
+  }
+
+  // ---- internal -----------------------------------------------------------
+
+  _connectSocket() {
+    clearTimeout(this._reconnectTimer);
+    this._timeSynced = false;
+    this._pendingChunks = [];
+    log(`Connecting to ${this._url} ...`);
+    setStatus('reconnecting', 'Connecting...');
+    btn.textContent = 'Disconnect';
+    btn.classList.add('danger');
+    urlInput.disabled = true;
+
+    this._ws = new WebSocket(this._url);
+    this._ws.binaryType = 'arraybuffer';
+    this._ws.addEventListener('open',    () => this._onOpen());
+    this._ws.addEventListener('close',   () => this._onClose());
+    this._ws.addEventListener('error',   () => this._onError());
+    this._ws.addEventListener('message', e => {
+      if (e.data instanceof ArrayBuffer) this._onBinary(e.data);
+      else                               this._onText(e.data);
+    });
+  }
+
+  _unlockAudio() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      setStatus('error', 'Web Audio unavailable');
+      log('Web Audio is not available in this browser', 'err');
+      return;
+    }
+    if (!this._ctx) {
+      this._ctx      = new AudioCtx();
+      this._gain     = this._ctx.createGain();
+      this._analyser = this._ctx.createAnalyser();
+      this._analyser.fftSize = 32;
+      this._gain.gain.value  = volInput.value / 100;
+      this._gain.connect(this._analyser);
+      this._gain.connect(this._ctx.destination);
+    }
+    if (this._ctx.state === 'suspended') {
+      this._ctx.resume().catch(() => log('Audio unlock is waiting for a user gesture', 'warn'));
+    }
+  }
+
+  _onOpen() {
+    this._unlockAudio();
+    this._reconnectDelay = RECONNECT_MIN_MS;
+
+    this._send({
+      type: 'client/hello',
+      payload: {
+        client_id: this._clientId,
+        name: 'Local Voice Browser Player',
+        version: 1,
+        supported_roles: ['player@v1'],
+        'player@v1_support': {
+          supported_formats: [
+            { codec: 'pcm', channels: 1, sample_rate: 24000, bit_depth: 16 },
+            { codec: 'pcm', channels: 1, sample_rate: 16000, bit_depth: 16 },
+            { codec: 'pcm', channels: 1, sample_rate: 22050, bit_depth: 16 },
+            { codec: 'pcm', channels: 1, sample_rate: 44100, bit_depth: 16 },
+            { codec: 'pcm', channels: 1, sample_rate: 48000, bit_depth: 16 },
+            { codec: 'pcm', channels: 2, sample_rate: 44100, bit_depth: 16 },
+            { codec: 'pcm', channels: 2, sample_rate: 48000, bit_depth: 16 },
+          ],
+          buffer_capacity: 4 * 1024 * 1024,
+          supported_commands: ['volume', 'mute'],
+        },
+      },
+    });
+
+    this._syncTimer = setInterval(() => this._syncTime(), 10_000);
+    this._syncTime();
+  }
+
+  _onClose() {
+    clearInterval(this._syncTimer);
+    this._clearPlayback(false);
+    this._ws = null;
+
+    if (this._manualClose) {
+      setStatus('', 'Disconnected');
+      serverNm.textContent = 'RotorHazard';
+      log('Disconnected', 'warn');
+      btn.textContent = 'Connect';
+      btn.classList.remove('danger');
+      urlInput.disabled = false;
+      return;
+    }
+
+    const delay = this._reconnectDelay;
+    const seconds = Math.round(delay / 1000);
+    setStatus('reconnecting', `Reconnecting in ${seconds}s...`);
+    log(`Connection lost; reconnecting in ${seconds}s`, 'warn');
+    this._reconnectTimer = setTimeout(() => this._connectSocket(), delay);
+    this._reconnectDelay = Math.min(delay * 2, RECONNECT_MAX_MS);
+  }
+
+  _onError() {
+    setStatus('error', 'Connection error');
+    log('WebSocket error — check URL and network', 'err');
+  }
+
+  _syncTime() {
+    this._send({ type: 'client/time',
+                 payload: { client_transmitted: performance.now() * 1000 } });
+  }
+
+  _onText(raw) {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    const { type, payload = {} } = msg;
+
+    if (type === 'server/hello') {
+      const name = payload.name ?? payload.server_id ?? 'Server';
+      setStatus('connected', 'Ready');
+      serverNm.textContent = name;
+      log(`Connected — ${name}`, 'info');
+      this._sendPlayerState('synchronized');
+      btn.textContent = 'Disconnect';
+      btn.classList.add('danger');
+      urlInput.disabled = true;
+
+    } else if (type === 'server/time') {
+      // Update clock offset: server_us = performance.now()*1000 - _serverOffset
+      const tRecv = performance.now() * 1000;
+      const tSend = payload.client_transmitted || 0;
+      const rtt   = tRecv - tSend;
+      const serverAtRecv = (payload.server_transmitted || 0) + rtt / 2;
+      this._serverOffset = tRecv - serverAtRecv;
+      this._timeSynced = true;
+      this._flushPendingChunks();
+
+    } else if (type === 'stream/start') {
+      this._clearPlayback(false);
+      this._format = payload.player;
+      this._nextScheduledAt = 0;
+      this._pendingChunks = [];
+
+    } else if (type === 'stream/end') {
+      if (this._sources.size === 0) setStatus('connected', 'Ready');
+
+    } else if (type === 'stream/clear') {
+      this._clearPlayback(true);
+    }
+  }
+
+  _onBinary(buffer) {
+    if (buffer.byteLength < 9 || !this._format) return;
+    const view = new DataView(buffer);
+    if (view.getUint8(0) !== 4) return;
+    const timestampUs = Number(view.getBigInt64(1, false));
+    const chunk = new Uint8Array(buffer.slice(9));
+    if (chunk.byteLength === 0) return;
+    if (!this._timeSynced) {
+      this._pendingChunks.push({ timestampUs, chunk });
+      this._pendingChunks = this._pendingChunks.slice(-200);
+      return;
+    }
+    this._scheduleAudioChunk(timestampUs, chunk);
+  }
+
+  _flushPendingChunks() {
+    if (!this._timeSynced || this._pendingChunks.length === 0) return;
+    const pending = this._pendingChunks;
+    this._pendingChunks = [];
+    for (const { timestampUs, chunk } of pending) {
+      this._scheduleAudioChunk(timestampUs, chunk);
+    }
+  }
+
+  _scheduleAudioChunk(timestampUs, pcm) {
+    this._unlockAudio();
+    if (!this._ctx || !this._gain || !this._analyser || !this._format) return;
+
+    const audioBuf = this._pcmToAudioBuffer(pcm, this._format);
+    if (!audioBuf) return;
+    if (this._ctx.state === 'suspended') this._ctx.resume();
+
+    const ctxNow = this._ctx.currentTime;
+    const serverNow = performance.now() * 1000 - this._serverOffset;
+    const timestampStart = ctxNow + (timestampUs - serverNow) / 1e6;
+    const chunkEndAt = timestampStart + audioBuf.duration;
+    if (chunkEndAt < ctxNow - LATE_CHUNK_GRACE_S) {
+      this._dropScheduledPlayback();
+      return;
+    }
+
+    let scheduleFromPrevious = 0;
+    if (this._nextScheduledAt > ctxNow - LATE_CHUNK_GRACE_S) {
+      scheduleFromPrevious = this._nextScheduledAt;
+    }
+    if (scheduleFromPrevious - timestampStart > RESYNC_DRIFT_S) {
+      this._dropScheduledPlayback();
+      scheduleFromPrevious = 0;
+    }
+
+    const fallbackStart = Math.max(scheduleFromPrevious, ctxNow + STREAM_SCHEDULE_LEAD_S);
+    const startAt = Math.max(timestampStart, fallbackStart);
+
+    const src = this._ctx.createBufferSource();
+    src.buffer = audioBuf;
+    src.connect(this._gain);
+
+    const sourceEntry = { src };
+    this._sources.add(sourceEntry);
+    src.start(startAt);
+    this._nextScheduledAt = startAt + audioBuf.duration;
+
+    if (this._sources.size === 1) {
+      log(
+        `Streaming ${this._format.sample_rate} Hz · ${this._format.channels}ch · ${this._format.bit_depth}bit`,
+        'play'
+      );
+      setStatus('playing', 'Playing…');
+      startViz(this._analyser);
+    }
+
+    src.addEventListener('ended', () => {
+      this._sources.delete(sourceEntry);
+      try { src.disconnect(); } catch {}
+      if (this._sources.size === 0) {
+        stopViz();
+        setStatus('connected', 'Ready');
+        this._nextScheduledAt = 0;
+      }
+    });
+  }
+
+  _dropScheduledPlayback() {
+    for (const { src } of this._sources) {
+      try { src.stop(); } catch {}
+      try { src.disconnect(); } catch {}
+    }
+    this._sources.clear();
+    this._nextScheduledAt = 0;
+    stopViz();
+  }
+
+  _pcmToAudioBuffer(pcm, format) {
+    const { sample_rate: rate, channels, bit_depth: bits } = format;
+    const bytesPerSample = bits / 8;
+    const bytesPerFrame = channels * bytesPerSample;
+    const numFrames = Math.floor(pcm.byteLength / bytesPerFrame);
+    if (numFrames <= 0) return null;
+
+    const audioBuf = this._ctx.createBuffer(channels, numFrames, rate);
+    const view = new DataView(pcm.buffer, pcm.byteOffset, numFrames * bytesPerFrame);
+
+    for (let ch = 0; ch < channels; ch++) {
+      const channelData = audioBuf.getChannelData(ch);
+      for (let i = 0; i < numFrames; i++) {
+        const byteOff = (i * channels + ch) * bytesPerSample;
+        let sample = 0;
+        if (bits === 16) {
+          sample = view.getInt16(byteOff, true) / 32768;
+        } else if (bits === 24) {
+          const b0 = view.getUint8(byteOff);
+          const b1 = view.getUint8(byteOff + 1);
+          const b2 = view.getUint8(byteOff + 2);
+          let v = (b2 << 16) | (b1 << 8) | b0;
+          if (v >= 0x800000) v -= 0x1000000;
+          sample = v / 8388608;
+        } else if (bits === 32) {
+          sample = view.getInt32(byteOff, true) / 2147483648;
+        }
+        channelData[i] = sample;
+      }
+    }
+    return audioBuf;
+  }
+
+  _clearPlayback(showLog) {
+    this._format = null;
+    this._nextScheduledAt = 0;
+    this._pendingChunks = [];
+    for (const { src } of this._sources) {
+      try { src.stop(); } catch {}
+      try { src.disconnect(); } catch {}
+    }
+    this._sources.clear();
+    stopViz();
+    if (this._ws?.readyState === WebSocket.OPEN) setStatus('connected', 'Ready');
+    if (showLog) log('Playback stopped', 'warn');
+  }
+
+  _sendPlayerState(state = null) {
+    const payload = {
+      player: {
+        volume: Number(volInput.value),
+        muted: Number(volInput.value) === 0,
+        static_delay_ms: 0,
+        supported_commands: ['set_static_delay'],
+      },
+    };
+    if (state) payload.state = state;
+    this._send({ type: 'client/state', payload });
+  }
+
+  _send(msg) {
+    if (this._ws?.readyState === WebSocket.OPEN) {
+      this._ws.send(JSON.stringify(msg));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Button wiring
+// ---------------------------------------------------------------------------
+let player = null;
+
+btn.addEventListener('click', () => {
+  if (player && btn.classList.contains('danger')) {
+    player.disconnect();
+    player = null;
+  } else {
+    let url;
+    try {
+      url = normalizeServerUrl(urlInput.value);
+    } catch (err) {
+      setStatus('error', 'Invalid server URL');
+      log(err.message || 'Invalid server URL', 'err');
+      return;
+    }
+    urlInput.value = url;
+    store.setItem('localVoice.serverUrl', url);
+    player = new SendSpinPlayer(url);
+    player.connect();
+  }
+});
+</script>
+</body>
+</html>

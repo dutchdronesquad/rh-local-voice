@@ -7,14 +7,21 @@ PLUGIN_PREFIX = "local_voice"
 ENABLE_OPTION = f"{PLUGIN_PREFIX}_enabled"
 VOICE_MODEL_OPTION = f"{PLUGIN_PREFIX}_voice_model"
 SPEECH_SPEED_OPTION = f"{PLUGIN_PREFIX}_speech_speed"
+NOISE_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_scale"
+NOISE_W_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_w_scale"
 TEST_PHRASE_OPTION = f"{PLUGIN_PREFIX}_test_phrase"
 
 # Audio profile toggles
 ENABLE_CROSSING_BEEPS_OPTION = f"{PLUGIN_PREFIX}_enable_crossing_beeps"
 
+# SendSpin server
+SENDSPIN_PORT = 8927
+
 DEFAULT_TEST_PHRASE = "RotorHazard local voice test"
 DEFAULT_MODEL = "en_GB-alan-medium"
-DEFAULT_SPEED = "1.0"
+DEFAULT_SPEED = "1.2"
+DEFAULT_NOISE_SCALE = "0.667"
+DEFAULT_NOISE_W_SCALE = "0.8"
 
 _HF = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 

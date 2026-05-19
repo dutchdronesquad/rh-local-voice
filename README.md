@@ -56,6 +56,14 @@ To manual run only on the staged files, use the following command:
 uv run prek run
 ```
 
+## Credits
+
+The bundled audio check track is:
+
+- Music track: Foreign by Moavii
+- Source: https://freetouse.com/music
+- Free Music Without Copyright (Safe)
+
 ## License
 
 Distributed under the **MIT** License. See [`LICENSE`](LICENSE) for more information.

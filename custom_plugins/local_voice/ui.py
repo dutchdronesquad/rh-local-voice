@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from flask import Blueprint, send_from_directory
 from RHUI import UIField, UIFieldSelectOption, UIFieldType
 
 from .const import (
     CONFIG_SECTION,
     DEFAULT_MODEL,
+    DEFAULT_NOISE_SCALE,
+    DEFAULT_NOISE_W_SCALE,
     DEFAULT_SPEED,
     DEFAULT_TEST_PHRASE,
     ENABLE_CROSSING_BEEPS_OPTION,
     ENABLE_OPTION,
+    NOISE_SCALE_OPTION,
+    NOISE_W_SCALE_OPTION,
     PANEL_ID,
     SPEECH_SPEED_OPTION,
     TEST_PHRASE_OPTION,
@@ -20,13 +26,18 @@ from .const import (
     VOICE_MODELS,
 )
 
+_PLAYER_DIR = Path(__file__).parent / "player"
+
 
 def register_ui(
     rhapi: Any,
     test_callback: Any,
+    audio_check_callback: Any,
+    stop_audio_callback: Any,
     clear_cache_callback: Any,
 ) -> None:
     """Register the Local Voice settings panel, options, and quick buttons."""
+    _register_player_blueprint(rhapi)
     rhapi.config.register_section(CONFIG_SECTION)
     rhapi.ui.register_panel(PANEL_ID, "Local Voice", "settings", open=False)
 
@@ -65,8 +76,32 @@ def register_ui(
             "Speech speed",
             UIFieldType.NUMBER,
             value=DEFAULT_SPEED,
-            desc="Playback speed (0.5 = slow, 1.0 = normal, 2.0 = fast).",
-            html_attributes={"min": "0.5", "max": "2.0", "step": "0.1"},
+            desc="Speech rate (0.5 = slow, 1.0 = normal, 2.0 = fast). Default: 1.2.",
+            html_attributes={"min": "0.5", "max": "2.0", "step": "0.05"},
+            persistent_section=CONFIG_SECTION,
+        ),
+        panel=PANEL_ID,
+    )
+    rhapi.fields.register_option(
+        UIField(
+            NOISE_SCALE_OPTION,
+            "Noise scale",
+            UIFieldType.NUMBER,
+            value=DEFAULT_NOISE_SCALE,
+            desc="Voice variation (0.0 = robotic, 1.0 = natural). Default: 0.667.",
+            html_attributes={"min": "0.0", "max": "1.0", "step": "0.05"},
+            persistent_section=CONFIG_SECTION,
+        ),
+        panel=PANEL_ID,
+    )
+    rhapi.fields.register_option(
+        UIField(
+            NOISE_W_SCALE_OPTION,
+            "Phoneme width noise",
+            UIFieldType.NUMBER,
+            value=DEFAULT_NOISE_W_SCALE,
+            desc="Rhythm variation (0.0 = uniform, 1.0 = natural). Default: 0.8.",
+            html_attributes={"min": "0.0", "max": "1.0", "step": "0.05"},
             persistent_section=CONFIG_SECTION,
         ),
         panel=PANEL_ID,
@@ -116,7 +151,30 @@ def register_ui(
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
+        name="local_voice_audio_check",
+        label="Play audio check",
+        function=audio_check_callback,
+    )
+    rhapi.ui.register_quickbutton(
+        panel=PANEL_ID,
+        name="local_voice_stop_audio",
+        label="Stop audio",
+        function=stop_audio_callback,
+    )
+    rhapi.ui.register_quickbutton(
+        panel=PANEL_ID,
         name="local_voice_clear_cache",
         label="Clear TTS cache",
         function=clear_cache_callback,
     )
+
+
+def _register_player_blueprint(rhapi: Any) -> None:
+    """Serve the SendSpin browser player at /player."""
+    bp = Blueprint("local_voice_player", __name__)
+
+    @bp.route("/player")
+    def player_page() -> Any:
+        return send_from_directory(str(_PLAYER_DIR), "index.html")
+
+    rhapi.ui.blueprint_add(bp)

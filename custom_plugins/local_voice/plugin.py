@@ -17,19 +17,28 @@ from filtermanager import Flt
 from .audio_queue import AudioQueue, Priority
 from .const import (
     DEFAULT_MODEL,
+    DEFAULT_NOISE_SCALE,
+    DEFAULT_NOISE_W_SCALE,
     DEFAULT_SPEED,
     DEFAULT_TEST_PHRASE,
     ENABLE_CROSSING_BEEPS_OPTION,
     ENABLE_OPTION,
+    NOISE_SCALE_OPTION,
+    NOISE_W_SCALE_OPTION,
+    SENDSPIN_PORT,
     SPEECH_SPEED_OPTION,
     TEST_PHRASE_OPTION,
     VOICE_MODEL_OPTION,
     VOICE_MODELS,
 )
-from .piper import PiperSynthesizer, SynthesisResult
+from .piper import PiperSynthesizer, SynthesisParams, SynthesisResult
+from .sendspin import SendSpinServer
 from .ui import register_ui
 
 logger = logging.getLogger(__name__)
+
+_ASSET_DIR = Path(__file__).parent / "assets"
+_AUDIO_CHECK_WAV = _ASSET_DIR / "moavii-foreign.wav"
 
 
 class LocalVoicePlugin:
@@ -47,7 +56,9 @@ class LocalVoicePlugin:
             tts_dir=cache_root / "tts",
             set_status=self._set_status,
         )
-        self._audio_queue = AudioQueue()
+        self._sendspin = SendSpinServer(port=SENDSPIN_PORT)
+        self._sendspin.start()
+        self._audio_queue = AudioQueue(player=self._sendspin.play)
         self._beep_wav = self._generate_beep(cache_root / "tts" / "beep.wav")
         self._synth_pool = ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="local_voice_synth"
@@ -56,6 +67,8 @@ class LocalVoicePlugin:
         register_ui(
             self._rhapi,
             test_callback=self.generate_test_phrase,
+            audio_check_callback=self.play_audio_check,
+            stop_audio_callback=self.stop_audio,
             clear_cache_callback=self.clear_tts_cache,
         )
         self._register_events()
@@ -202,11 +215,37 @@ class LocalVoicePlugin:
         ).strip()
         if not text:
             text = DEFAULT_TEST_PHRASE
-        wav_path = self.synthesize_to_cache(text)
+        wav_path = self.synthesize_test(text)
         if wav_path is None:
             self._rhapi.ui.message_alert("Local Voice test failed - check logs")
             return
-        self._rhapi.ui.message_notify(f"Local Voice test WAV ready: {wav_path.name}")
+        self._audio_queue.enqueue(
+            text=text, wav_paths=[wav_path], priority=Priority.HIGH
+        )
+        self._rhapi.ui.message_notify(
+            f"Local Voice test phrase queued: {wav_path.name}"
+        )
+
+    def play_audio_check(self, _args: dict[str, Any] | None = None) -> None:
+        """Play the bundled audio-check WAV through SendSpin."""
+        if not _AUDIO_CHECK_WAV.exists():
+            self._rhapi.ui.message_alert("Local Voice audio check WAV is missing")
+            return
+        self._audio_queue.enqueue(
+            text="SendSpin audio check",
+            wav_paths=[_AUDIO_CHECK_WAV],
+            priority=Priority.HIGH,
+            expiry_sec=45.0,
+        )
+        self._rhapi.ui.message_notify(
+            f"Local Voice audio check queued: {_AUDIO_CHECK_WAV.name}"
+        )
+
+    def stop_audio(self, _args: dict[str, Any] | None = None) -> None:
+        """Stop current SendSpin playback and clear queued audio."""
+        dropped = self._audio_queue.clear()
+        self._sendspin.stop()
+        self._rhapi.ui.message_notify(f"Local Voice audio stopped ({dropped} queued)")
 
     def clear_tts_cache(self, _args: dict[str, Any] | None = None) -> None:
         """Delete all cached WAV files for the currently selected model."""
@@ -231,7 +270,7 @@ class LocalVoicePlugin:
         result = self._tts.synthesize_to_cache(
             text=text,
             model_name=self._model_name(),
-            speed=self._speed_value(),
+            params=self._synth_params(),
         )
         if result is None:
             return None
@@ -243,8 +282,21 @@ class LocalVoicePlugin:
         result = self._tts.synthesize_to_cache(
             text=text,
             model_name=self._model_name(),
-            speed=self._speed_value(),
-            ephemeral=True,
+            params=self._synth_params(),
+            subdir="tmp",
+        )
+        if result is None:
+            return None
+        self._record_generation(result)
+        return result.wav_path
+
+    def synthesize_test(self, text: str) -> Path | None:
+        """Synthesize to the test dir — separate from the race cache."""
+        result = self._tts.synthesize_to_cache(
+            text=text,
+            model_name=self._model_name(),
+            params=self._synth_params(),
+            subdir="test",
         )
         if result is None:
             return None
@@ -324,12 +376,33 @@ class LocalVoicePlugin:
         value = str(self._option(VOICE_MODEL_OPTION, default=DEFAULT_MODEL))
         return value if value in VOICE_MODELS else DEFAULT_MODEL
 
+    def _synth_params(self) -> SynthesisParams:
+        return SynthesisParams(
+            speed=self._speed_value(),
+            noise=self._noise_scale_value(),
+            noise_w=self._noise_w_scale_value(),
+        )
+
     def _speed_value(self) -> str:
         value = self._option(SPEECH_SPEED_OPTION, default=DEFAULT_SPEED)
         try:
-            return f"{float(value):.2f}"
+            return f"{float(value):.3f}"
         except (TypeError, ValueError):
-            return f"{float(DEFAULT_SPEED):.2f}"
+            return f"{float(DEFAULT_SPEED):.3f}"
+
+    def _noise_scale_value(self) -> str:
+        value = self._option(NOISE_SCALE_OPTION, default=DEFAULT_NOISE_SCALE)
+        try:
+            return f"{float(value):.3f}"
+        except (TypeError, ValueError):
+            return f"{float(DEFAULT_NOISE_SCALE):.3f}"
+
+    def _noise_w_scale_value(self) -> str:
+        value = self._option(NOISE_W_SCALE_OPTION, default=DEFAULT_NOISE_W_SCALE)
+        try:
+            return f"{float(value):.3f}"
+        except (TypeError, ValueError):
+            return f"{float(DEFAULT_NOISE_W_SCALE):.3f}"
 
     def _option(self, name: str, *, default: Any) -> Any:
         value = self._rhapi.db.option(name)

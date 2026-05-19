@@ -90,22 +90,22 @@ with wave.open("out.wav", "wb") as f:
 ```
 
 **Pro:** no subprocess startup overhead, no binary path to manage, same install path as other Python dependencies.
-**Model download:** the plugin downloads the selected voice model automatically from the Piper release repository on first use (or when the model is changed). Models are cached in `~/rh-data/local_voice_cache/models/`. Internet is only needed once per model; race operation is fully offline after that.
+**Model download:** the plugin downloads the selected voice model automatically from the Hugging Face `rhasspy/piper-voices` repository on first use (or when the model is changed). Models are cached in `~/rh-data/local_voice_cache/models/`. Internet is only needed once per model; race operation is fully offline after that.
 
-**Supported languages:** English and Dutch to start. Recommended default models: `en_GB-alan-medium` (English) and `nl_NL-mls-medium` (Dutch). The plugin setting shows a dropdown of available models grouped by language; the operator picks one per installation.
-**Mitigation for synthesis latency:** pre-generate all predictable phrases at heat load (pilot names, lap numbers 1–20, "Race Start", "Race Stop", "Winner is", countdown). Real-time synthesis only for unexpected text.
+**Supported languages:** English, Dutch, and German to start. Recommended default models: `en_GB-alan-medium` (English) and `nl_NL-mls-medium` (Dutch). The plugin setting shows a dropdown of available models; the operator picks one per installation.
+**Mitigation for synthesis latency:** cache generated phrases by normalized text and synthesis parameters. Planned follow-up: pre-generate predictable phrases at heat load (pilot names, lap numbers 1–20, "Race Start", "Race Stop", "Winner is"). Real-time synthesis remains necessary for dynamic lap times and unexpected text.
 
 ### Wyoming Piper (upgrade path)
 
 Piper as a persistent TCP service. Plugin sends text, receives WAV back. Can run on a separate LAN machine if the Pi is underpowered for synthesis.
 
-**Recommendation:** start with `piper-tts` Python package + pre-caching. Add Wyoming Piper as an optional backend in Phase 5.
+**Recommendation:** start with the `piper-tts` Python package + WAV caching. Add Wyoming Piper as an optional backend in Phase 5.
 
 ---
 
 ## B. Audio Output — SendSpin
 
-SendSpin separates a **server/source** (orchestrates streams, accepts audio input) from a **player/client** (receives audio, plays through a local audio device). The plugin acts as a source and pushes generated WAV audio to one or more named player instances on the local network.
+SendSpin separates a **server/source** (orchestrates streams, accepts audio input) from a **player/client** (receives audio, plays through a local audio device). The current plugin starts an in-process SendSpin server and streams generated WAV audio to connected clients on the local network. Named player targeting remains planned work.
 
 ```
 RotorHazard plugin
@@ -151,13 +151,13 @@ The SendSpin player can run on any device with an audio output: Intel NUC, lapto
 | Full event setup | Local (for PA) + Cloud (for phones) | NUC at PA + any phone |
 
 
-### Browser player migration: Vite / Preact / sendspin-js
+### Browser player: current implementation
 
-The current plugin-served browser player started as a standalone hand-written HTML file in `custom_plugins/local_voice/player/index.html`. That was useful for proving the protocol, but it duplicates timing, buffering, correction, and reconnect behavior that already exists in the official JavaScript client. The browser player should move to a proper frontend source tree and use `@sendspin/sendspin-js` for playback.
+The plugin-served browser player is now a Vite / Preact / TypeScript app in the root-level `player/` directory. It uses the official `@sendspin/sendspin-js` SDK for playback instead of maintaining custom WebAudio timing, buffering, correction, and reconnect logic in a hand-written HTML file.
 
-**Decision:** create a root-level `player/` frontend app, mirroring the `rh-stream-overlays/frontend` pattern, and build its static output into `custom_plugins/local_voice/player/`. The RotorHazard plugin route can continue serving `/player` from that output directory, so no operator-facing URL change is needed.
+The production build is written to `custom_plugins/local_voice/player/`, and the RotorHazard plugin serves that directory at `/player`. Operator-facing URLs therefore stay stable while the browser player is maintained as a normal frontend app.
 
-#### Frontend source layout
+#### Source and build output
 
 ```text
 rh-local-voice/
@@ -175,24 +175,26 @@ rh-local-voice/
     assets/...                    # generated build output
 ```
 
-#### Scaffold choices
+#### Current design
 
 - Vite + Preact + TypeScript.
 - Router: **No**. The app is a single runtime page served at `/player`; routing adds no value.
 - Prerender / SSG: **No**. The app depends on WebSocket, WebAudio, user gestures, and runtime SendSpin state.
 - ESLint: **Yes**. Realtime audio and connection-state code benefits from catching simple mistakes early.
 - Build output: `custom_plugins/local_voice/player/`.
-- Keep plugin route unchanged: `GET /player` returns the built `index.html`; static assets should also be served from the same directory if Vite emits hashed assets.
+- Plugin route: `GET /player` returns the built `index.html`; static assets are served from the same directory.
 
-#### Package plan
-
-Runtime dependency:
+#### Runtime dependency
 
 ```json
-"@sendspin/sendspin-js": "^3.1.0"
+{
+  "dependencies": {
+    "@sendspin/sendspin-js": "^3.1.0"
+  }
+}
 ```
 
-Use the official SDK rather than duplicating browser audio scheduling. The player app should instantiate `SendspinPlayer` from `@sendspin/sendspin-js` and let the SDK handle:
+The app instantiates `SendspinPlayer` from `@sendspin/sendspin-js` and lets the SDK handle:
 
 - SendSpin protocol handshake
 - time sync
@@ -201,7 +203,7 @@ Use the official SDK rather than duplicating browser audio scheduling. The playe
 - drift correction / resync
 - volume and mute state
 
-Recommended player config:
+Player construction follows this shape:
 
 ```ts
 new SendspinPlayer({
@@ -209,7 +211,7 @@ new SendspinPlayer({
   playerId,
   clientName: "Local Voice Browser Player",
   codecs: ["pcm"],
-  correctionMode: "quality-local",
+  correctionMode,
   reconnect: {
     baseDelayMs: 1000,
     maxDelayMs: 15000,
@@ -219,62 +221,47 @@ new SendspinPlayer({
 });
 ```
 
-`baseUrl` should be a HTTP(S) origin, not the websocket endpoint path. The UI may accept values like `localhost:8927`, `http://host:8927`, or `ws://host:8927/sendspin`, but it should normalize them to the SDK `baseUrl` form before constructing `SendspinPlayer`.
+`baseUrl` should be a HTTP(S) origin, not the websocket endpoint path. The UI accepts values like `localhost:8927`, `http://host:8927`, or `ws://host:8927/sendspin`, and normalizes them to the SDK `baseUrl` form before constructing `SendspinPlayer`.
 
-#### UI scope for the Preact player
-
-The first Preact version should stay narrow and production-oriented:
+#### Browser UI
 
 - Connect / disconnect button.
 - Server URL input, persisted in `localStorage`.
 - Volume slider and mute toggle.
-- Status states: disconnected, connecting, connected, playing, reconnecting, error.
+- Correction mode selector.
+- Status states: disconnected, connecting, connected, playing, error; reconnect attempts are logged and shown as connecting.
 - Compact sync diagnostics from `player.syncInfo` and `player.timeSyncInfo` for debugging browser hiccups.
 - Activity log for connection events and SDK state changes.
 
-Do **not** rebuild the manual WebAudio scheduling code in Preact. The point of this migration is to remove that custom timing surface.
+The browser player should continue to avoid local audio scheduling code. Timing, correction, reconnects, and decoding belong in the SendSpin SDK.
 
 #### Build / dev scripts
-
-The `player/package.json` scripts should end up close to:
 
 ```json
 {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "lint": "eslint .",
+    "preview": "vite preview --host 0.0.0.0"
   }
 }
 ```
 
-The `vite.config.ts` should mirror the stream-overlays style: use a small `fromConfig()` helper, set aliases if needed, and write output to `../custom_plugins/local_voice/player`.
+`vite.config.ts` uses a small `fromConfig()` helper and writes production output to `../custom_plugins/local_voice/player`.
 
-#### Migration approach
+#### Validation checklist
 
-1. Keep the existing hand-written `custom_plugins/local_voice/player/index.html` working until the Preact build is validated.
-2. Build the new Preact app in `player/`.
-3. Configure Vite output to overwrite `custom_plugins/local_voice/player/` only once the new app can connect and play audio.
-4. Validate against the in-process `aiosendspin` server with both native SendSpin players and the browser player connected at the same time.
-5. Remove or archive the old hand-written HTML only after the SDK player proves smoother under browser hiccups.
-
-#### Validation checklist for the Preact player
-
-- [ ] `npm run check` passes in `player/`.
-- [ ] `npm run build` emits `custom_plugins/local_voice/player/index.html` and assets.
-- [ ] RotorHazard `/player` serves the built app and all assets.
-- [ ] Browser player connects to `aiosendspin` on `8927`.
-- [ ] Test phrase plays in sync with a native SendSpin player.
-- [ ] Stop button clears playback on native and browser players.
-- [ ] MacBook/browser hiccup does not create persistent delay after recovery.
-- [ ] Reconnect after SendSpin server restart works without page refresh.
-- [ ] Hard refresh / clean localStorage still produces a usable default URL.
-
-#### Current status
-
-- Root-level `player/` has been scaffolded with Vite/Preact/TypeScript.
-- `@sendspin/sendspin-js` has been installed in `player/`.
-- Implementation of the actual Preact player is intentionally paused; finish from this section later.
+- [x] `npm run check` passes in `player/`.
+- [x] `npm run build` emits `custom_plugins/local_voice/player/index.html` and assets.
+- [x] RotorHazard `/player` route is implemented for the built app and static assets.
+- [x] Hard refresh / clean localStorage computes a usable default URL from the current host.
+- [x] Browser player connects to `aiosendspin` on `8927`.
+- [x] Test phrase plays in sync with a native SendSpin player.
+- [x] Stop button clears playback on native and browser players.
+- [x] MacBook/browser hiccup does not create persistent delay after recovery.
+- [x] Reconnect after SendSpin server restart works without page refresh.
 
 ### Known SendSpin risks to validate before race day
 
@@ -290,9 +277,8 @@ The `vite.config.ts` should mirror the stream-overlays style: use a small `fromC
 RotorHazard server
   └── Local Voice Plugin (Python 3.12+, RHAPI)
         ├── Event listeners
-        │     Evt.RACE_STAGE, RACE_START, RACE_LAP_RECORDED,
-        │     RACE_PILOT_DONE, RACE_WIN, RACE_STOP,
-        │     CROSSING_ENTER/EXIT, MESSAGE_STANDARD/INTERRUPT
+        │     Evt.HEAT_SET, CROSSING_ENTER/EXIT
+        ├── Flt.EMIT_PHONETIC_DATA  (lap data snapshots)
         ├── Flt.EMIT_PHONETIC_TEXT  (server-originated text callouts)
         ├── Async audio queue (FIFO, priority levels)
         ├── TTS: piper-tts (in-process) → WAV cache
@@ -311,12 +297,15 @@ RotorHazard server
 
 ### Audio cache
 
-Cache key: `{normalized_text}_{voice}_{speed}.wav`
+Cache path: `{model_name}/{sha1(normalized_text)}_{speed}_{noise}_{noise_w}.wav`
 
-Pre-generate at heat load:
+Current heat-load behavior:
+- Clears ephemeral lap-time WAV files for the selected model.
+
+Planned pre-generation at heat load:
 - Pilot callsigns from the current heat.
 - Lap numbers 1–20.
-- Fixed phrases: "Race Start", "Race Stop", countdown, "Winner is", "Finished", "First place".
+- Fixed phrases: "Race Start", "Race Stop", "Winner is", "Finished", "First place".
 
 ---
 
@@ -325,12 +314,12 @@ Pre-generate at heat load:
 The plugin cannot take over the built-in Audio Control tab. The operating model is:
 
 1. Install and enable the plugin.
-2. Configure Piper and SendSpin in the plugin panel.
-3. Run a SendSpin player on the device connected to the speakers.
+2. Configure Piper in the plugin panel.
+3. Run a SendSpin player on the device connected to the speakers and connect it to the RotorHazard host on port `8927`.
 4. On every regular RotorHazard browser client: set Voice Volume to 0 and disable browser beeps if the plugin handles beeps.
 
 **Built-in Audio Control → used only to silence browser clients**
-**Plugin Audio Profile → decides what the speakers announce**
+**Plugin Audio Profile → planned place to decide what the speakers announce**
 
 Plugin audio profile mirrors the familiar RH categories:
 - Pilot callsign, lap number, lap time on/off
@@ -343,21 +332,27 @@ Plugin audio profile mirrors the familiar RH categories:
 
 ## Plugin Settings
 
+Implemented:
 - Enable plugin audio: on/off
-- TTS engine: piper-tts (in-process) / Wyoming Piper / disabled
-- Voice model: dropdown of available models grouped by language (English / Dutch)
-- Wyoming Piper host and port (if used)
+- Voice model selector: 12 models across English, Dutch, and German
+- Speech speed, noise scale, phoneme width noise
+- Crossing enter/exit beeps: on/off
+- Test phrase field and quick button
+- Play audio check quick button
+- Stop audio quick button
+- Clear TTS cache quick button
+- Duplicate prevention warnings for browser Voice Volume and browser beeps
+
+Planned / not implemented yet:
+- TTS engine selector: piper-tts / Wyoming Piper / disabled
+- Wyoming Piper host and port
 - SendSpin mode: in-process / sidecar / disabled
-- SendSpin sidecar URL (if sidecar mode)
-- SendSpin player target: auto-discover / manual URL
-- SendSpin player name (e.g. `Race Speakers`)
-- Speech speed, output volume, beep volume
+- SendSpin sidecar URL
+- SendSpin player target list or named player selection
+- Output volume and beep volume in the plugin panel
 - Pre-generate on heat load: on/off
-- Cache directory and clear button
-- Audio profile: per-event toggles (see above)
-- Test phrase button
-- Status display: TTS reachable, SendSpin source running, player connected
-- Duplicate prevention checklist: shows required built-in RH Audio Control settings
+- Per-event audio profile toggles beyond crossing beeps
+- Panel status display for TTS, SendSpin source, and connected players
 
 ---
 
@@ -369,10 +364,10 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 
 ### Phase 1 — Foundation: Plugin Scaffold + Piper TTS
 
-**Goal:** A working plugin that generates a valid WAV file from text using the `piper-tts` Python package. No SendSpin yet. Proves the TTS pipeline and cache end to end.
+**Goal:** A working plugin that generates a valid WAV file from text using the `piper-tts` Python package. Proves the TTS pipeline and cache end to end.
 
 #### Plugin structure
-- [x] Create `plugins/local_voice/__init__.py` with `initialize(rhapi)` entry point
+- [x] Create `custom_plugins/local_voice/__init__.py` with `initialize(rhapi)` entry point
 - [x] Register a settings panel via `rhapi.ui.register_panel()`
 - [x] Add "Enable plugin audio" toggle via `rhapi.fields.register_option()`
 - [x] Add voice model selector setting (12 models: EN-GB, EN-US, NL, DE)
@@ -381,21 +376,21 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 
 #### piper-tts integration
 - [x] Add `piper-tts` to plugin dependencies
-- [x] On first use (or model change): auto-download selected voice model from Piper release repository into `~/rh-data/local_voice_cache/models/`
+- [x] On first use (or model change): auto-download selected voice model from Hugging Face into `~/rh-data/local_voice_cache/models/`
 - [x] Handle download failure with a clear error message (status logged; no panel field — see note below)
-- [x] Load `PiperVoice` once at plugin init; reload only when model/speed setting changes
+- [x] Load `PiperVoice` lazily on first synthesis; reload when the model changes
 - [x] Synthesize text to WAV using `voice.synthesize_wav(text, wav_file, syn_config)` (piper-tts >= 1.4 API)
 - [x] Handle synthesis errors gracefully (log, skip, no crash)
 
 #### Audio cache
 - [x] Create cache directory: `~/rh-data/local_voice_cache/tts/`
-- [x] Cache key: `{sha1(normalized_text)}_{model_name}_{speed}.wav`
+- [x] Cache key: `{sha1(normalized_text)}_{speed}_{noise}_{noise_w}.wav` under a per-model directory
 - [x] On cache hit: return existing WAV path, skip synthesis
 - [x] On cache miss: synthesize, write to cache, return WAV path
 
 #### Event hook
 - [x] Register `Flt.EMIT_PHONETIC_TEXT` handler
-- [x] Log intercepted callout text to verify hook fires correctly
+- [x] Schedule intercepted callout text for synthesis/playback to verify hook fires correctly
 - [x] Hook does not modify or block the callout payload
 
 #### Status display
@@ -407,54 +402,59 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 **Success criteria:**
 - [x] Clicking "Test phrase" generates a WAV in the cache directory with correct size and a valid WAV header
 - [x] Second click on "Test phrase" returns the cached file without re-synthesizing (log confirms cache hit)
-- [x] `Flt.EMIT_PHONETIC_TEXT` log entry appears when a test callout is triggered
-- [x] Model not found / download failure shows a clear message in the panel, does not crash RotorHazard
+- [x] `Flt.EMIT_PHONETIC_TEXT` handler is registered and schedules text callouts without modifying the payload
+- [x] Model not found / download failure logs a clear status and does not crash RotorHazard
 
 ---
 
 ### Phase 2 — Race Events + Audio Queue
 
-**Goal:** All race events wired. Async queue with priority and expiry. Pre-caching at heat load. The plugin is now race-functional; audio output is verified via the log and WAV files — SendSpin is wired in Phase 3.
+**Goal:** Lap/text callout filters and crossing events are wired. Async queue has priority and expiry. Heat-load cache handling exists; full pre-caching remains backlog.
 
-#### Race event listeners
-- [x] `Evt.RACE_STAGE` → "Ready"
-- [x] `Evt.RACE_START` → "Race start"
-- [x] `Evt.RACE_LAP_RECORDED` → "Pilot [callsign], Lap [n]" + optional lap time
-- [x] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
-- [x] `Evt.RACE_WIN` → "Winner is [callsign]"
+#### Current callout inputs
+- [x] `Flt.EMIT_PHONETIC_DATA` → "Pilot [callsign], Lap [n]" + optional lap time
+- [x] `Flt.EMIT_PHONETIC_TEXT` → server-originated text callouts via TTS
+- [x] `Evt.CROSSING_ENTER` / `Evt.CROSSING_EXIT` → programmatically generated sine-tone beep WAV
+- [x] `Evt.HEAT_SET` → clear ephemeral lap-time WAVs for the selected model
+
+#### Direct race event listeners
+- [ ] `Evt.RACE_STAGE` → "Ready"
+- [ ] `Evt.RACE_START` → "Race start"
+- [ ] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
+- [ ] `Evt.RACE_WIN` → "Winner is [callsign]" (currently covered only if RotorHazard emits winner text through `Flt.EMIT_PHONETIC_TEXT`)
 - [ ] Race Tied / Overtime — deferred pending upstream `Evt.RACE_TIED` / `Evt.RACE_OVERTIME`
 - [ ] Race leader — deferred pending unified `Flt.EMIT_PHONETIC_TEXT` routing
-- [x] `Evt.RACE_STOP` / `Evt.RACE_FINISH` → "Race stopped" / "Race finished"
-- [x] `Evt.CROSSING_ENTER` / `Evt.CROSSING_EXIT` → programmatically generated sine-tone beep WAV
-- [x] `Evt.MESSAGE_STANDARD` / `Evt.MESSAGE_INTERRUPT` → spoken message text via TTS
+- [ ] `Evt.RACE_STOP` / `Evt.RACE_FINISH` → "Race stopped" / "Race finished"
+- [ ] `Evt.MESSAGE_STANDARD` / `Evt.MESSAGE_INTERRUPT` → spoken message text via TTS (currently covered only if RotorHazard emits message text through `Flt.EMIT_PHONETIC_TEXT`)
 
 #### Async audio queue
 - [x] Single `queue.PriorityQueue` with a dedicated daemon worker thread (`audio_queue.py`)
-- [x] `AudioJob` dataclass: `text`, `wav_path`, `priority`, `expires_at`
+- [x] `AudioJob` dataclass: `text`, `wav_paths`, `priority`, `expires_at`
 - [x] Priority levels: `HIGH` (race start / winner / interrupt) > `NORMAL` (lap callout) > `LOW` (beep)
 - [x] Expiry: drop jobs where `time.monotonic() > expires_at` (default: 5 seconds)
 - [x] Single worker draining the queue in priority order; expired jobs dropped and logged
-- [ ] Worker plays one item at a time; previous item must finish before next starts (playback in Phase 3)
+- [x] Worker plays one item at a time; previous item must finish before next starts
 
 #### Audio profile settings
-- [x] Pilot callsign: on/off
-- [x] Lap number: on/off
-- [x] Lap time: on/off
+- [ ] Pilot callsign: on/off — not separately configurable yet
+- [ ] Lap number: on/off — not separately configurable yet
+- [ ] Lap time: on/off — not separately configurable yet
 - [ ] Race clock callouts: on/off — deferred pending upstream `Evt.RACE_CLOCK_WARNING`
-- [x] Winner callout: on/off
+- [ ] Winner callout: on/off — not separately configurable yet
 - [ ] Race tied / overtime callout: on/off — deferred pending upstream fix
 - [ ] Race leader callout: on/off — deferred pending upstream fix
-- [x] Pilot finished callout: on/off
-- [x] Crossing enter/exit beeps: on/off (toggle only; handler in backlog)
+- [ ] Pilot finished callout: on/off — not separately configurable yet
+- [x] Crossing enter/exit beeps: on/off
 - [x] All implemented toggles exposed in plugin settings panel
 
-#### Pre-caching at heat load
+#### Heat-load cache handling
 - [x] Hook into `Evt.HEAT_SET`
-- [x] Generate WAVs for all pilot callsigns in the loaded heat
-- [x] Generate WAVs for lap numbers 1–20
-- [x] Generate WAVs for all fixed phrases
-- [x] Pre-caching runs in a background thread; does not block heat load or event handling
-- [x] Log how many files were generated and how long it took
+- [x] Clear ephemeral lap-time WAV files when a heat loads
+- [ ] Generate WAVs for all pilot callsigns in the loaded heat
+- [ ] Generate WAVs for lap numbers 1–20
+- [ ] Generate WAVs for all fixed phrases
+- [ ] Pre-caching runs in a background thread; does not block heat load or event handling
+- [ ] Log how many files were generated and how long it took
 
 #### Duplicate prevention UI
 - [x] Plugin panel shows two separate markdown warnings (Voice Volume + browser beeps)
@@ -508,19 +508,19 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 - [ ] Panel shows: "Last test: sent to [target name] at [time]"
 
 #### Browser player rewrite
-- [x] Existing proof-of-concept browser player served at `/player`
+- [x] Browser player served at `/player`
 - [x] Root-level `player/` Vite/Preact app scaffolded
 - [x] Add `@sendspin/sendspin-js` to the root-level player app
-- [ ] Configure Vite build output to `custom_plugins/local_voice/player/`
-- [ ] Replace template UI with `SendspinPlayer`-based app
-- [ ] Add compact diagnostics for sync drift, correction mode, reconnects, and player state
+- [x] Configure Vite build output to `custom_plugins/local_voice/player/`
+- [x] Replace template UI with `SendspinPlayer`-based app
+- [x] Add compact diagnostics for sync drift, correction mode, reconnects, and player state
 - [ ] Validate browser player against native SendSpin player for sync and hiccup recovery
 
 **Success criteria:**
-- "Test phrase" plays audibly through the SendSpin player on a remote device
-- Lap callout latency (cached phrase, Pi to player) measured and documented
-- Player disconnect is shown in the UI; plugin continues without crash
-- Disconnecting and reconnecting the player recovers automatically
+- [ ] "Test phrase" plays audibly through the SendSpin player on a remote device
+- [ ] Lap callout latency (cached phrase, Pi to player) measured and documented
+- [ ] Player disconnect is shown in the UI; plugin continues without crash
+- [ ] Disconnecting and reconnecting the player recovers automatically
 
 ---
 
@@ -566,8 +566,8 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 #### Wyoming Piper backend
 - [ ] Wyoming protocol TCP client: connect to `host:port`, send synthesis request, receive WAV
 - [ ] Plugin setting: Wyoming Piper host and port
-- [ ] Setting: TTS engine selector (Piper CLI / Wyoming Piper)
-- [ ] Fallback: if Wyoming unreachable on startup, fall back to Piper CLI and show warning
+- [ ] Setting: TTS engine selector (piper-tts / Wyoming Piper)
+- [ ] Fallback: if Wyoming unreachable on startup, fall back to in-process piper-tts and show warning
 - [ ] Health check: Wyoming service reachable; shown in plugin panel
 - [ ] Cache works identically for both backends (same cache key format)
 
@@ -594,7 +594,7 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 - [ ] End-to-end test checklist for a new installation
 
 **Success criteria:**
-- Wyoming Piper produces callouts with measurably lower latency than Piper CLI for uncached phrases
+- Wyoming Piper produces callouts with measurably lower latency than in-process piper-tts for uncached phrases
 - mDNS discovers the SendSpin player without manual URL entry on a standard home/club network
 - A new user following the installation guide has audio working within 30 minutes
 - Cache size stays bounded; old files evicted automatically when limit is reached
@@ -608,7 +608,7 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 | SendSpin stream latency too high for short callouts | High | Measure early; persistent stream / keep-alive source if needed |
 | SendSpin public preview API changes | Medium | Pin version, document upgrade path |
 | Python 3.12 not available on Pi | Medium | Use sidecar variant B |
-| piper-tts too slow on Pi for uncached callouts | High | Pre-caching at heat load; Wyoming Piper on separate machine as fallback |
+| piper-tts too slow on Pi for uncached callouts | High | WAV caching now; planned heat-load pre-caching; Wyoming Piper on separate machine as fallback |
 | Browser audio not disabled on clients | Duplicate audio | Setup checklist in UI |
 | mDNS unreliable on race network | Medium | Manual player URL as primary config |
 | Browser WebAudio scheduling drifts after tab or MacBook hiccup | Medium | Use official `@sendspin/sendspin-js` scheduler instead of custom scheduling; expose sync diagnostics |
@@ -622,7 +622,7 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 3. Plugin checks cache; on miss, calls piper-tts in-process to generate WAV.
 4. Audio job enters the async playback queue.
 5. Playback worker sends WAV to the SendSpin source.
-6. SendSpin streams audio to the named player on the local network.
+6. SendSpin streams audio to connected clients on the local network.
 7. Player outputs audio through the connected speaker/mixer.
 8. Built-in browser audio remains disabled on normal clients.
 

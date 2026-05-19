@@ -14,7 +14,10 @@ from aiosendspin.server import SendspinServer as AioSendspinServer
 from aiosendspin.server.push_stream import MAIN_CHANNEL, StreamStoppedError
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
     from pathlib import Path
+
+    from aiosendspin.server.group import SendspinGroup
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,7 @@ _CHUNK_DURATION_S = 0.05
 _INITIAL_PLAYBACK_DELAY_S = 0.25
 _TIMEOUT_MARGIN_S = 10
 _BUFFER_LIMIT_US = 500_000
+_LATE_JOIN_SYNC_INTERVAL_S = 0.1
 
 
 class _SendspinClock(Protocol):
@@ -211,9 +215,7 @@ class SendSpinServer:
             return
 
         group = clients[0].group
-        for client in clients[1:]:
-            if client.group is not group:
-                await group.add_client(client)
+        client_count = await self._sync_connected_clients(group)
 
         stream = group.start_stream()
         play_start_us: int | None = server.clock.now_us() + int(
@@ -222,24 +224,45 @@ class SendSpinServer:
         play_end_us = play_start_us
         streamed_count = 0
 
+        async def sync_clients() -> int:
+            return await self._sync_connected_clients(group)
+
         try:
             for wav_path in wav_paths:
-                next_play_start_us, clip_end_us = await _stream_wav(
+                next_play_start_us, clip_end_us, client_count = await _stream_wav(
                     stream,
                     wav_path,
                     play_start_us=play_start_us,
+                    sync_clients=sync_clients,
                 )
                 play_start_us = next_play_start_us
                 if clip_end_us is not None:
                     play_end_us = clip_end_us
                     streamed_count += 1
             await self._finish_stream(
-                server.clock, play_end_us, streamed_count, len(clients)
+                server.clock,
+                play_end_us,
+                streamed_count,
+                client_count,
+                sync_clients=sync_clients,
             )
         except StreamStoppedError:
             logger.info("Local Voice: Sendspin stream stopped")
         finally:
             await group.stop()
+
+    async def _sync_connected_clients(self, group: SendspinGroup) -> int:
+        server = self._server
+        if server is None:
+            return 0
+        for client in server.connected_clients:
+            if client.group is not group:
+                await group.add_client(client)
+                logger.info(
+                    "Local Voice: added late Sendspin client to active stream: %s",
+                    client.client_id,
+                )
+        return sum(1 for client in group.clients if client.is_connected)
 
     async def _finish_stream(
         self,
@@ -247,15 +270,18 @@ class SendSpinServer:
         play_end_us: int,
         streamed_count: int,
         client_count: int,
+        *,
+        sync_clients: Callable[[], Awaitable[int]],
     ) -> None:
         if not streamed_count:
             return
+        client_count = max(client_count, await sync_clients())
         logger.info(
             "Local Voice: streamed %d WAV(s) to %d client(s)",
             streamed_count,
             client_count,
         )
-        await _sleep_until(clock, play_end_us)
+        await _sleep_until(clock, play_end_us, sync_clients=sync_clients)
 
 
 async def _stream_wav(
@@ -263,10 +289,12 @@ async def _stream_wav(
     wav_path: Path,
     *,
     play_start_us: int | None,
-) -> tuple[int | None, int | None]:
+    sync_clients: Callable[[], Awaitable[int]],
+) -> tuple[int | None, int | None, int]:
+    client_count = await sync_clients()
     clip = _read_wav(wav_path)
     if clip is None:
-        return play_start_us, None
+        return play_start_us, None, client_count
     audio_format, pcm_data = clip
     bytes_per_frame = audio_format.channels * (audio_format.bit_depth // 8)
     chunk_frames = max(1, int(audio_format.sample_rate * _CHUNK_DURATION_S))
@@ -275,7 +303,8 @@ async def _stream_wav(
 
     for offset in range(0, len(pcm_data), chunk_bytes):
         if stream.is_stopped:
-            return play_start_us, play_end_us
+            return play_start_us, play_end_us, client_count
+        client_count = await sync_clients()
         await stream.sleep_to_limit_buffer(max_buffer_us=_BUFFER_LIMIT_US)
         chunk = pcm_data[offset : offset + chunk_bytes]
         stream.prepare_audio(chunk, audio_format, channel_id=MAIN_CHANNEL)
@@ -284,7 +313,7 @@ async def _stream_wav(
         chunk_duration_us = int(frames_in_chunk * 1_000_000 / audio_format.sample_rate)
         play_end_us = chunk_start_us + chunk_duration_us
         play_start_us = None
-    return play_start_us, play_end_us
+    return play_start_us, play_end_us, client_count
 
 
 def _read_wav(wav_path: Path) -> tuple[AudioFormat, bytes] | None:
@@ -322,9 +351,16 @@ def _wav_total_duration(wav_paths: list[Path]) -> float:
     return total
 
 
-async def _sleep_until(clock: _SendspinClock, timestamp_us: int) -> None:
-    """Sleep until a Sendspin clock timestamp has passed."""
-    now_us = clock.now_us()
-    delay_s = (timestamp_us - now_us) / 1_000_000
-    if delay_s > 0:
-        await asyncio.sleep(delay_s)
+async def _sleep_until(
+    clock: _SendspinClock,
+    timestamp_us: int,
+    *,
+    sync_clients: Callable[[], Awaitable[int]],
+) -> None:
+    """Sleep until a Sendspin clock timestamp has passed while catching late joiners."""
+    while True:
+        await sync_clients()
+        delay_s = (timestamp_us - clock.now_us()) / 1_000_000
+        if delay_s <= 0:
+            return
+        await asyncio.sleep(min(delay_s, _LATE_JOIN_SYNC_INTERVAL_S))

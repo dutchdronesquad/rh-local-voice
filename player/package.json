@@ -1,0 +1,29 @@
+{
+  "name": "rh-local-voice-player",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit",
+    "lint": "eslint .",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@sendspin/sendspin-js": "^3.1.0",
+    "lucide-preact": "^1.16.0",
+    "preact": "^10.26.9"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "@types/node": "^25.9.0",
+    "eslint": "^9.39.4",
+    "eslint-config-preact": "^2.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13"
+  },
+  "eslintConfig": {
+    "extends": "preact"
+  }
+}

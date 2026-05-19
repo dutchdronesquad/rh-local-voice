@@ -177,4 +177,8 @@ def _register_player_blueprint(rhapi: Any) -> None:
     def player_page() -> Any:
         return send_from_directory(str(_PLAYER_DIR), "index.html")
 
+    @bp.route("/player/<path:filename>")
+    def player_asset(filename: str) -> Any:
+        return send_from_directory(str(_PLAYER_DIR), filename)
+
     rhapi.ui.blueprint_add(bp)

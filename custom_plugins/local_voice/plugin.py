@@ -16,6 +16,7 @@ from filtermanager import Flt
 
 from .audio_queue import AudioQueue, Priority
 from .const import (
+    CONFIG_SECTION,
     DEFAULT_MODEL,
     DEFAULT_NOISE_SCALE,
     DEFAULT_NOISE_W_SCALE,
@@ -254,11 +255,11 @@ class LocalVoicePlugin:
         if not model_tts_dir.exists():
             self._rhapi.ui.message_notify("Local Voice: cache is already empty")
             return
-        count = sum(1 for f in model_tts_dir.glob("*.wav") if f.is_file())
-        for wav_file in model_tts_dir.glob("*.wav"):
+        wav_files = [path for path in model_tts_dir.rglob("*.wav") if path.is_file()]
+        for wav_file in wav_files:
             wav_file.unlink(missing_ok=True)
         self._rhapi.ui.message_notify(
-            f"Local Voice: cleared {count} WAV files for {model_name}"
+            f"Local Voice: cleared {len(wav_files)} WAV files for {model_name}"
         )
 
     # ------------------------------------------------------------------
@@ -405,5 +406,9 @@ class LocalVoicePlugin:
             return f"{float(DEFAULT_NOISE_W_SCALE):.3f}"
 
     def _option(self, name: str, *, default: Any) -> Any:
-        value = self._rhapi.db.option(name)
-        return default if value is None else value
+        config = getattr(self._rhapi.config, "get_all", {})
+        if isinstance(config, dict):
+            section = config.get(CONFIG_SECTION, {})
+            if isinstance(section, dict) and name in section:
+                return section[name]
+        return default

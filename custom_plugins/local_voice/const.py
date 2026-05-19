@@ -17,7 +17,7 @@ ENABLE_CROSSING_BEEPS_OPTION = f"{PLUGIN_PREFIX}_enable_crossing_beeps"
 # SendSpin server
 SENDSPIN_PORT = 8927
 
-DEFAULT_TEST_PHRASE = "RotorHazard local voice test"
+DEFAULT_TEST_PHRASE = "Pilot Rocket finishes lap three in twelve point four seconds."
 DEFAULT_MODEL = "en_GB-alan-medium"
 DEFAULT_SPEED = "1.2"
 DEFAULT_NOISE_SCALE = "0.667"

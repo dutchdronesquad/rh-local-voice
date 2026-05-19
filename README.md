@@ -94,7 +94,7 @@ Distributed under the **MIT** License. See [`LICENSE`](LICENSE) for more informa
 
 <!-- LINKS -->
 [RotorHazard]: https://github.com/RotorHazard/RotorHazard
-[Piper TTS]: https://github.com/rhasspy/piper
+[Piper TTS]: https://github.com/OHF-Voice/piper1-gpl
 [SendSpin]: https://github.com/sendspin
 [WindowsSpin]: https://github.com/sendspin/windowsspin
 [uv]: https://docs.astral.sh/uv/

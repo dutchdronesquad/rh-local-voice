@@ -175,6 +175,11 @@ select {
   gap: 0.75rem;
 }
 
+.header-text {
+  min-width: 0;
+  flex: 1;
+}
+
 .header-icon {
   width: 32px;
   height: 32px;
@@ -265,7 +270,8 @@ select {
   stroke: var(--green);
 }
 
-.ring-arc.connecting {
+.ring-arc.connecting,
+.ring-arc.reconnecting {
   stroke: var(--amber);
   stroke-dashoffset: 47;
   animation: spin-arc 2s linear infinite;
@@ -317,7 +323,8 @@ select {
   background: var(--green);
 }
 
-.ring-dot span.connecting {
+.ring-dot span.connecting,
+.ring-dot span.reconnecting {
   background: var(--amber);
   box-shadow: 0 0 8px var(--amber);
 }
@@ -388,7 +395,8 @@ select {
   color: var(--green);
 }
 
-.status-label.connecting {
+.status-label.connecting,
+.status-label.reconnecting {
   color: var(--amber);
 }
 
@@ -598,37 +606,44 @@ select:focus-visible {
   flex: 0 0 auto;
 }
 
-.primary,
-.danger {
-  width: 100%;
-  border: 0;
-  border-radius: 10px;
-  color: #fff;
-  font-size: 0.95rem;
+.connection-button {
+  width: auto;
+  border: 1px solid color-mix(in srgb, var(--blue) 40%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--blue) 8%, var(--surface));
+  color: var(--blue);
+  font-size: 0.86rem;
   font-weight: 600;
-  padding: 0.7rem;
-  transition: background 0.15s, transform 0.1s;
+  padding: 0.58rem 0.7rem;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.1s;
   letter-spacing: 0.01em;
 }
 
-.primary {
-  background: var(--blue);
+.header-connection {
+  min-width: 86px;
+  min-height: 32px;
+  flex: 0 0 auto;
+  padding: 0.42rem 0.65rem;
+  font-size: 0.78rem;
 }
 
-.primary:hover {
-  background: var(--blue-hover);
+.connection-button:hover {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 13%, var(--surface));
 }
 
-.danger {
-  background: #b91c1c;
+.connection-button.connected {
+  border-color: color-mix(in srgb, var(--red) 36%, var(--border));
+  background: color-mix(in srgb, var(--red) 7%, var(--surface));
+  color: var(--red);
 }
 
-.danger:hover {
-  background: #991b1b;
+.connection-button.connected:hover {
+  border-color: color-mix(in srgb, var(--red) 58%, var(--border));
+  background: color-mix(in srgb, var(--red) 12%, var(--surface));
 }
 
-.primary:active,
-.danger:active,
+.connection-button:active,
 .mute-button:active {
   transform: scale(0.98);
 }
@@ -758,6 +773,25 @@ select:focus-visible {
 
 .empty-log {
   color: var(--subtle);
+}
+
+.player-credit {
+  padding: 0.5rem 1.25rem 0.65rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  color: var(--subtle);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.player-credit a {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.player-credit a:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 520px) {

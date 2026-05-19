@@ -5,9 +5,10 @@ import { render } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import "./style.css";
 
-type ConnectionState = "disconnected" | "connecting" | "connected" | "playing" | "error";
+type ConnectionState = "disconnected" | "connecting" | "connected" | "playing" | "reconnecting" | "error";
 
 type PlayerSnapshot = {
+  isConnected: boolean;
   isPlaying: boolean;
   volume: number;
   muted: boolean;
@@ -164,6 +165,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [snapshot, setSnapshot] = useState<PlayerSnapshot>({
+    isConnected: false,
     isPlaying: false,
     volume,
     muted,
@@ -178,6 +180,7 @@ function App() {
   const playerRef = useRef<SendspinPlayer | null>(null);
   const logRef = useRef<HTMLElement | null>(null);
   const logIdRef = useRef(0);
+  const hasConnectedRef = useRef(false);
   const lastPlayingRef = useRef(false);
   const detailLogRef = useRef<DetailLogState>({
     correctionMethod: "none",
@@ -212,6 +215,7 @@ function App() {
   function readSnapshot(player: SendspinPlayer): PlayerSnapshot {
     const syncInfo = player.syncInfo;
     return {
+      isConnected: player.isConnected,
       isPlaying: player.isPlaying,
       volume: player.volume,
       muted: player.muted,
@@ -224,6 +228,13 @@ function App() {
       playbackRate: syncInfo.playbackRate,
       timeSynced: player.timeSyncInfo.synced,
     };
+  }
+
+  function stateFromSnapshot(nextSnapshot: PlayerSnapshot): ConnectionState {
+    if (!nextSnapshot.isConnected) {
+      return hasConnectedRef.current ? "reconnecting" : "connecting";
+    }
+    return nextSnapshot.isPlaying ? "playing" : "connected";
   }
 
   function logPlaybackDetails(player: SendspinPlayer, nextSnapshot: PlayerSnapshot, nextState: PlayerEventState) {
@@ -296,6 +307,7 @@ function App() {
     window.localStorage.setItem(STORE_SERVER_URL, normalizedUrl);
     setState("connecting");
     setError(null);
+    hasConnectedRef.current = false;
     resetDetailLogs();
     addLog(`Connecting to ${normalizedUrl}`);
 
@@ -309,11 +321,15 @@ function App() {
       reconnect: {
         ...RECONNECT_CONFIG,
         onReconnecting: (attempt) => {
-          setState("connecting");
+          setState("reconnecting");
           addLog(`Reconnecting (${attempt})`, "warn");
         },
         onReconnected: () => {
-          setState("connected");
+          hasConnectedRef.current = true;
+          resetDetailLogs();
+          const nextSnapshot = readSnapshot(player);
+          setSnapshot(nextSnapshot);
+          setState(stateFromSnapshot(nextSnapshot));
           addLog("Reconnected");
         },
         onExhausted: () => {
@@ -323,9 +339,10 @@ function App() {
         },
       },
       onStateChange: (nextState) => {
+        if (playerRef.current !== player) return;
         const nextSnapshot = readSnapshot(player);
         setSnapshot(nextSnapshot);
-        setState(nextState.isPlaying ? "playing" : "connected");
+        setState(stateFromSnapshot(nextSnapshot));
         logPlaybackDetails(player, nextSnapshot, nextState);
         if (nextState.isPlaying !== lastPlayingRef.current) {
           lastPlayingRef.current = nextState.isPlaying;
@@ -344,12 +361,16 @@ function App() {
     player.setMuted(muted);
     try {
       await player.connect();
-      setSnapshot(readSnapshot(player));
-      setState(player.isPlaying ? "playing" : "connected");
+      hasConnectedRef.current = true;
+      const nextSnapshot = readSnapshot(player);
+      setSnapshot(nextSnapshot);
+      setState(stateFromSnapshot(nextSnapshot));
       setServerOpen(false);
       addLog("Connected");
     } catch (err) {
+      player.disconnect("shutdown");
       playerRef.current = null;
+      hasConnectedRef.current = false;
       const message = err instanceof Error ? err.message : "Connection failed";
       setError(message);
       setState("error");
@@ -361,12 +382,13 @@ function App() {
   function disconnect() {
     const player = playerRef.current;
     playerRef.current = null;
+    hasConnectedRef.current = false;
     lastPlayingRef.current = false;
     resetDetailLogs();
     if (player) player.disconnect("user_request");
     setState("disconnected");
     setServerOpen(true);
-    setSnapshot((current) => ({ ...current, isPlaying: false, format: null, timeSynced: false }));
+    setSnapshot((current) => ({ ...current, isConnected: false, isPlaying: false, format: null, timeSynced: false }));
     addLog("Disconnected", "warn");
   }
 
@@ -392,7 +414,13 @@ function App() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       const player = playerRef.current;
-      if (player) setSnapshot(readSnapshot(player));
+      if (player) {
+        const nextSnapshot = readSnapshot(player);
+        setSnapshot(nextSnapshot);
+        if (!nextSnapshot.isConnected) {
+          setState(stateFromSnapshot(nextSnapshot));
+        }
+      }
     }, 500);
     return () => window.clearInterval(interval);
   }, []);
@@ -405,17 +433,19 @@ function App() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
-  const connected = state === "connected" || state === "playing" || state === "connecting";
+  const connected = state === "connected" || state === "playing" || state === "connecting" || state === "reconnecting";
 
   const statusText = state === "playing"
     ? "Playing"
     : state === "connected"
       ? "Ready"
-      : state === "connecting"
-        ? "Connecting..."
-        : state === "error"
-          ? "Connection error"
-          : "Disconnected";
+      : state === "reconnecting"
+        ? "Reconnecting..."
+        : state === "connecting"
+          ? "Connecting..."
+          : state === "error"
+            ? "Connection error"
+            : "Disconnected";
 
   return (
     <main class="shell">
@@ -429,10 +459,17 @@ function App() {
           <div class="header-icon" aria-hidden="true">
             <Play fill="currentColor" strokeWidth={0} />
           </div>
-          <div>
+          <div class="header-text">
             <h1>Local Voice Player</h1>
             <p>RotorHazard</p>
           </div>
+          <button
+            class={`connection-button header-connection ${connected ? "connected" : ""}`}
+            type="button"
+            onClick={connected ? disconnect : connect}
+          >
+            {connected ? "Disconnect" : "Connect"}
+          </button>
         </header>
 
         <section class="status-hero" aria-live="polite">
@@ -521,9 +558,6 @@ function App() {
             </select>
           </label>
 
-          <button class={connected ? "danger" : "primary"} type="button" onClick={connected ? disconnect : connect}>
-            {connected ? "Disconnect" : "Connect"}
-          </button>
         </div>
 
         {error && <p class="error-text">{error}</p>}
@@ -555,6 +589,13 @@ function App() {
             <p key={entry.id} class={entry.kind}>{entry.message}</p>
           ))}
         </section>
+
+        <footer class="player-credit">
+          Playback powered by{" "}
+          <a href="https://www.sendspin-audio.com/" target="_blank" rel="noopener noreferrer">
+            SendSpin
+          </a>
+        </footer>
       </section>
     </main>
   );

@@ -150,6 +150,132 @@ The SendSpin player can run on any device with an audio output: Intel NUC, lapto
 | Small event, no PA | Cloud | Pilots' and spectators' phones via QR code |
 | Full event setup | Local (for PA) + Cloud (for phones) | NUC at PA + any phone |
 
+
+### Browser player migration: Vite / Preact / sendspin-js
+
+The current plugin-served browser player started as a standalone hand-written HTML file in `custom_plugins/local_voice/player/index.html`. That was useful for proving the protocol, but it duplicates timing, buffering, correction, and reconnect behavior that already exists in the official JavaScript client. The browser player should move to a proper frontend source tree and use `@sendspin/sendspin-js` for playback.
+
+**Decision:** create a root-level `player/` frontend app, mirroring the `rh-stream-overlays/frontend` pattern, and build its static output into `custom_plugins/local_voice/player/`. The RotorHazard plugin route can continue serving `/player` from that output directory, so no operator-facing URL change is needed.
+
+#### Frontend source layout
+
+```text
+rh-local-voice/
+  player/                         # Vite/Preact source app
+    package.json
+    package-lock.json
+    vite.config.ts
+    tsconfig.json
+    index.html
+    src/
+      index.tsx
+      style.css
+  custom_plugins/local_voice/player/
+    index.html                    # generated build output, served by plugin
+    assets/...                    # generated build output
+```
+
+#### Scaffold choices
+
+- Vite + Preact + TypeScript.
+- Router: **No**. The app is a single runtime page served at `/player`; routing adds no value.
+- Prerender / SSG: **No**. The app depends on WebSocket, WebAudio, user gestures, and runtime SendSpin state.
+- ESLint: **Yes**. Realtime audio and connection-state code benefits from catching simple mistakes early.
+- Build output: `custom_plugins/local_voice/player/`.
+- Keep plugin route unchanged: `GET /player` returns the built `index.html`; static assets should also be served from the same directory if Vite emits hashed assets.
+
+#### Package plan
+
+Runtime dependency:
+
+```json
+"@sendspin/sendspin-js": "^3.1.0"
+```
+
+Use the official SDK rather than duplicating browser audio scheduling. The player app should instantiate `SendspinPlayer` from `@sendspin/sendspin-js` and let the SDK handle:
+
+- SendSpin protocol handshake
+- time sync
+- reconnect behavior
+- decoding / scheduling
+- drift correction / resync
+- volume and mute state
+
+Recommended player config:
+
+```ts
+new SendspinPlayer({
+  baseUrl,
+  playerId,
+  clientName: "Local Voice Browser Player",
+  codecs: ["pcm"],
+  correctionMode: "quality-local",
+  reconnect: {
+    baseDelayMs: 1000,
+    maxDelayMs: 15000,
+    maxAttempts: Infinity,
+  },
+  onStateChange: updateUiFromSdkState,
+});
+```
+
+`baseUrl` should be a HTTP(S) origin, not the websocket endpoint path. The UI may accept values like `localhost:8927`, `http://host:8927`, or `ws://host:8927/sendspin`, but it should normalize them to the SDK `baseUrl` form before constructing `SendspinPlayer`.
+
+#### UI scope for the Preact player
+
+The first Preact version should stay narrow and production-oriented:
+
+- Connect / disconnect button.
+- Server URL input, persisted in `localStorage`.
+- Volume slider and mute toggle.
+- Status states: disconnected, connecting, connected, playing, reconnecting, error.
+- Compact sync diagnostics from `player.syncInfo` and `player.timeSyncInfo` for debugging browser hiccups.
+- Activity log for connection events and SDK state changes.
+
+Do **not** rebuild the manual WebAudio scheduling code in Preact. The point of this migration is to remove that custom timing surface.
+
+#### Build / dev scripts
+
+The `player/package.json` scripts should end up close to:
+
+```json
+{
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit"
+  }
+}
+```
+
+The `vite.config.ts` should mirror the stream-overlays style: use a small `fromConfig()` helper, set aliases if needed, and write output to `../custom_plugins/local_voice/player`.
+
+#### Migration approach
+
+1. Keep the existing hand-written `custom_plugins/local_voice/player/index.html` working until the Preact build is validated.
+2. Build the new Preact app in `player/`.
+3. Configure Vite output to overwrite `custom_plugins/local_voice/player/` only once the new app can connect and play audio.
+4. Validate against the in-process `aiosendspin` server with both native SendSpin players and the browser player connected at the same time.
+5. Remove or archive the old hand-written HTML only after the SDK player proves smoother under browser hiccups.
+
+#### Validation checklist for the Preact player
+
+- [ ] `npm run check` passes in `player/`.
+- [ ] `npm run build` emits `custom_plugins/local_voice/player/index.html` and assets.
+- [ ] RotorHazard `/player` serves the built app and all assets.
+- [ ] Browser player connects to `aiosendspin` on `8927`.
+- [ ] Test phrase plays in sync with a native SendSpin player.
+- [ ] Stop button clears playback on native and browser players.
+- [ ] MacBook/browser hiccup does not create persistent delay after recovery.
+- [ ] Reconnect after SendSpin server restart works without page refresh.
+- [ ] Hard refresh / clean localStorage still produces a usable default URL.
+
+#### Current status
+
+- Root-level `player/` has been scaffolded with Vite/Preact/TypeScript.
+- `@sendspin/sendspin-js` has been installed in `player/`.
+- Implementation of the actual Preact player is intentionally paused; finish from this section later.
+
 ### Known SendSpin risks to validate before race day
 
 - **Latency per short WAV:** SendSpin is designed for synchronized music streaming. Stream setup overhead for many short event-driven callouts must be measured. A persistent stream or keep-alive source connection may be required.
@@ -351,10 +477,10 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 **Goal:** Audio leaves the Pi and plays on a remote device via SendSpin. Latency validated. Local Pi playback retired as primary path.
 
 #### SendSpin source setup
-- [ ] Add `sendspin` to plugin dependencies (pin to a specific version)
-- [ ] SendSpin source/server starts when plugin is enabled
-- [ ] SendSpin source accepts WAV input from the plugin audio queue worker
-- [ ] In-process mode: plugin drives SendSpin source directly (Python 3.12+)
+- [x] Add `aiosendspin` to plugin dependencies; keep server-only extras explicit in `manifest.json` (`av`, `numpy`, `pillow`) because RotorHazard plugin install flows may not preserve extras reliably
+- [x] SendSpin source/server starts when plugin initializes
+- [x] SendSpin source accepts WAV input from the plugin audio queue worker
+- [x] In-process mode: plugin drives `aiosendspin` directly (Python 3.12+)
 - [ ] Sidecar mode: plugin sends WAV jobs to local sidecar via HTTP/WS (see Phase 4)
 - [ ] Plugin setting: SendSpin mode (in-process / sidecar / disabled)
 
@@ -378,8 +504,17 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 - [ ] Decision recorded: stream-per-WAV vs persistent stream
 
 #### Test phrase through SendSpin
-- [ ] Test button sends phrase through the full stack: Piper → cache → SendSpin → player
+- [x] Test button sends phrase through the full stack: Piper → cache → in-process `aiosendspin` → connected player(s)
 - [ ] Panel shows: "Last test: sent to [target name] at [time]"
+
+#### Browser player rewrite
+- [x] Existing proof-of-concept browser player served at `/player`
+- [x] Root-level `player/` Vite/Preact app scaffolded
+- [x] Add `@sendspin/sendspin-js` to the root-level player app
+- [ ] Configure Vite build output to `custom_plugins/local_voice/player/`
+- [ ] Replace template UI with `SendspinPlayer`-based app
+- [ ] Add compact diagnostics for sync drift, correction mode, reconnects, and player state
+- [ ] Validate browser player against native SendSpin player for sync and hiccup recovery
 
 **Success criteria:**
 - "Test phrase" plays audibly through the SendSpin player on a remote device
@@ -476,6 +611,7 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 | piper-tts too slow on Pi for uncached callouts | High | Pre-caching at heat load; Wyoming Piper on separate machine as fallback |
 | Browser audio not disabled on clients | Duplicate audio | Setup checklist in UI |
 | mDNS unreliable on race network | Medium | Manual player URL as primary config |
+| Browser WebAudio scheduling drifts after tab or MacBook hiccup | Medium | Use official `@sendspin/sendspin-js` scheduler instead of custom scheduling; expose sync diagnostics |
 
 ---
 

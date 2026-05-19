@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class SynthesisParams:
+    """Synthesis parameters that control Piper output and the WAV cache key."""
+
+    speed: str
+    noise: str
+    noise_w: str
+
+
+@dataclass(frozen=True)
 class SynthesisResult:
     """Result metadata for a synthesized or cached WAV file."""
 
@@ -60,24 +69,24 @@ class PiperSynthesizer:
         self,
         text: str,
         model_name: str,
-        speed: str,
+        params: SynthesisParams,
         *,
-        ephemeral: bool = False,
+        subdir: str = "",
     ) -> SynthesisResult | None:
         """Return a cached WAV for text, synthesizing it with Piper if needed.
 
-        When *ephemeral* is True the WAV is written to a ``tmp/`` subdirectory
-        that can be wiped safely between heats.
+        When *subdir* is given the WAV is written to ``{model_dir}/{subdir}/``
+        instead of directly under the model directory.
         """
         normalized_text = self.normalize_text(text)
         if not normalized_text:
             self._set_status("No text supplied")
             return None
 
-        cache_key = self.cache_key(normalized_text, speed)
+        cache_key = self.cache_key(normalized_text, params)
         model_tts_dir = self._tts_dir / model_name
-        if ephemeral:
-            model_tts_dir = model_tts_dir / "tmp"
+        if subdir:
+            model_tts_dir = model_tts_dir / subdir
         model_tts_dir.mkdir(parents=True, exist_ok=True)
         wav_path = model_tts_dir / f"{cache_key}.wav"
         started = time.perf_counter()
@@ -97,7 +106,11 @@ class PiperSynthesizer:
             return None
 
         try:
-            syn_config = SynthesisConfig(length_scale=1.0 / float(speed))
+            syn_config = SynthesisConfig(
+                length_scale=1.0 / float(params.speed),
+                noise_scale=float(params.noise),
+                noise_w_scale=float(params.noise_w),
+            )
             with wave.open(str(wav_path), "wb") as wav_file:
                 voice.synthesize_wav(normalized_text, wav_file, syn_config=syn_config)
         except Exception as exc:
@@ -127,6 +140,10 @@ class PiperSynthesizer:
     def tmp_dir_for_model(self, model_name: str) -> Path:
         """Return the ephemeral tmp subdirectory for a specific model."""
         return self._tts_dir / model_name / "tmp"
+
+    def test_dir_for_model(self, model_name: str) -> Path:
+        """Return the test-phrase subdirectory for a specific model."""
+        return self._tts_dir / model_name / "test"
 
     def cache_status_text(self) -> str:
         """Return cache directory and total file-count status."""
@@ -218,10 +235,10 @@ class PiperSynthesizer:
         return " ".join(normalized.split())
 
     @staticmethod
-    def cache_key(text: str, speed: str) -> str:
-        """Build a SHA1-based WAV cache key from text and speed."""
+    def cache_key(text: str, params: SynthesisParams) -> str:
+        """Build a SHA1-based WAV cache key from text and synthesis params."""
         digest = hashlib.sha1(text.lower().encode("utf-8")).hexdigest()  # noqa: S324
-        return f"{digest}_{speed}"
+        return f"{digest}_{params.speed}_{params.noise}_{params.noise_w}"
 
     @staticmethod
     def valid_wav(path: Path) -> bool:

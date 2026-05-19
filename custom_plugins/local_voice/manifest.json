@@ -7,5 +7,11 @@
   "documentation_uri": "https://github.com/dutchdronesquad/rh-local-voice",
   "required_rhapi_version": "1.0",
   "version": "0.1.0",
-  "dependencies": ["piper-tts>=1.4.2"]
+  "dependencies": [
+    "piper-tts>=1.4.2",
+    "aiosendspin>=5.2.0",
+    "av>=17.0.1",
+    "numpy>=2.4.5",
+    "pillow>=12.2.0"
+  ]
 }

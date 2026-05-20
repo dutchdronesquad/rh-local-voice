@@ -168,7 +168,7 @@ def register_ui(
 
 
 def _register_player_blueprint(rhapi: Any) -> None:
-    """Serve the SendSpin browser player at /player."""
+    """Serve the Sendspin browser player at /player."""
     bp = Blueprint("local_voice_player", __name__)
 
     @bp.route("/player")

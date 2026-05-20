@@ -228,12 +228,12 @@ class LocalVoicePlugin:
         )
 
     def play_audio_check(self, _args: dict[str, Any] | None = None) -> None:
-        """Play the bundled audio-check WAV through SendSpin."""
+        """Play the bundled audio-check WAV through Sendspin."""
         if not _AUDIO_CHECK_WAV.exists():
             self._rhapi.ui.message_alert("Local Voice audio check WAV is missing")
             return
         self._audio_queue.enqueue(
-            text="SendSpin audio check",
+            text="Sendspin audio check",
             wav_paths=[_AUDIO_CHECK_WAV],
             priority=Priority.HIGH,
             expiry_sec=45.0,
@@ -243,7 +243,7 @@ class LocalVoicePlugin:
         )
 
     def stop_audio(self, _args: dict[str, Any] | None = None) -> None:
-        """Stop current SendSpin playback and clear queued audio."""
+        """Stop current Sendspin playback and clear queued audio."""
         dropped = self._audio_queue.clear()
         self._sendspin.stop()
         self._rhapi.ui.message_notify(f"Local Voice audio stopped ({dropped} queued)")

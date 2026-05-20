@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-    <img alt="Local Voice" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/main/custom_plugins/local_voice/player/favicon.svg" width="96">
+    <img alt="Local Voice" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/custom_plugins/local_voice/player/favicon.svg" width="96">
   </picture>
 </p>
 
@@ -38,7 +38,7 @@
   and streams playback to one or more Sendspin clients over the local network.
 </p>
 
-![SCREENSHOT](https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/main/docs/screenshot.png)
+![SCREENSHOT](https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/.github/assets/screenshot.png)
 
 # Local Voice
 

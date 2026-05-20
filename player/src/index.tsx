@@ -593,7 +593,7 @@ function App() {
         <footer class="player-credit">
           Playback powered by{" "}
           <a href="https://www.sendspin-audio.com/" target="_blank" rel="noopener noreferrer">
-            SendSpin
+            Sendspin
           </a>
         </footer>
       </section>

@@ -14,7 +14,7 @@ TEST_PHRASE_OPTION = f"{PLUGIN_PREFIX}_test_phrase"
 # Audio profile toggles
 ENABLE_CROSSING_BEEPS_OPTION = f"{PLUGIN_PREFIX}_enable_crossing_beeps"
 
-# SendSpin server
+# Sendspin server
 SENDSPIN_PORT = 8927
 
 DEFAULT_TEST_PHRASE = "Pilot Rocket finishes lap three in twelve point four seconds."

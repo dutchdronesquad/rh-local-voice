@@ -111,13 +111,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/38/cf/a4ece0114e7388c0daa9e8a5f4ae1148f32e34b42f6feefe8c40be21d9ae/aiosendspin-5.2.0-py3-none-any.whl", hash = "sha256:27b57af992607fd9dd0d3e3c0088225893c968fbc2b2d1ac72f26a75b8326084", size = 151355, upload_time = "2026-05-06T13:10:04.892Z" },
 ]
 
-[package.optional-dependencies]
-server = [
-    { name = "av" },
-    { name = "numpy" },
-    { name = "pillow" },
-]
-
 [[package]]
 name = "aiosignal"
 version = "1.4.0"
@@ -284,7 +277,7 @@ name = "local-voice"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "aiosendspin", extra = ["server"] },
+    { name = "aiosendspin" },
     { name = "av" },
     { name = "numpy" },
     { name = "pillow" },
@@ -300,7 +293,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiosendspin", extras = ["server"], specifier = ">=5.2.0" },
+    { name = "aiosendspin", specifier = ">=5.2.0" },
     { name = "av", specifier = ">=17.0.1" },
     { name = "numpy", specifier = ">=2.4.5" },
     { name = "pillow", specifier = ">=12.2.0" },

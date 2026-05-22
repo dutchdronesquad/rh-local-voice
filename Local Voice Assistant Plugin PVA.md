@@ -93,7 +93,7 @@ with wave.open("out.wav", "wb") as f:
 **Model download:** the plugin downloads the selected voice model automatically from the Hugging Face `rhasspy/piper-voices` repository on first use (or when the model is changed). Models are cached in `~/rh-data/local_voice_cache/models/`. Internet is only needed once per model; race operation is fully offline after that.
 
 **Supported languages:** English, Dutch, and German to start. Recommended default models: `en_GB-alan-medium` (English) and `nl_NL-mls-medium` (Dutch). The plugin setting shows a dropdown of available models; the operator picks one per installation.
-**Mitigation for synthesis latency:** cache generated phrases by normalized text and synthesis parameters. Planned follow-up: pre-generate predictable phrases at heat load (pilot names, lap numbers 1–20, "Race Start", "Race Stop", "Winner is"). Real-time synthesis remains necessary for dynamic lap times and unexpected text.
+**Mitigation for synthesis latency:** cache generated phrases by normalized text and synthesis parameters. The plugin pre-generates predictable pilot/lap phrases at heat load (`[name], Lap 1–15`). Real-time synthesis remains necessary for dynamic lap times and unexpected text.
 
 ### Wyoming Piper (upgrade path)
 
@@ -265,9 +265,8 @@ The browser player should continue to avoid local audio scheduling code. Timing,
 
 ### Known Sendspin risks to validate before race day
 
-- **Latency per short WAV:** Sendspin is designed for synchronized music streaming. Stream setup overhead for many short event-driven callouts must be measured. A persistent stream or keep-alive source connection may be required.
 - **Public preview:** APIs may still change.
-- **mDNS discovery** may be unreliable on isolated race networks. Manual player URL config must always be available as fallback.
+- **Browser/network hiccups:** validate the `/player` browser client on the actual race network and speaker device before relying on it for an event.
 
 ---
 
@@ -302,11 +301,8 @@ Cache path: `{model_name}/{sha1(normalized_text)}_{speed}_{noise}_{noise_w}.wav`
 
 Current heat-load behavior:
 - Clears ephemeral lap-time WAV files for the selected model.
-
-Planned pre-generation at heat load:
-- Pilot callsigns from the current heat.
-- Lap numbers 1–20.
-- Fixed phrases: "Race Start", "Race Stop", "Winner is", "Finished", "First place".
+- Pre-generates "[name], Lap [n]" for pilots in the selected heat, laps 1–15.
+- Stores pre-generated lap phrases under `tts/<model>/precache/`.
 
 ---
 
@@ -351,10 +347,8 @@ Implemented:
 
 MVP planned / not implemented yet:
 - Announcement options per component: Pilot Callsign, Pilot Lap Number, Pilot Lap Time — each selectable as Never / Always / Only on Non-Team/Non-Co-op Races. Use Python enums for option values.
-- Sendspin player target list or named player selection
 - Output volume and beep volume in the plugin panel
 - Pre-generate on heat load: on/off
-- Panel status display for TTS, Sendspin source, and connected players
 
 Known issues / deferred fixes:
 - Sendspin reconnect silence: after a client reconnects, no audio is heard until the next new stream; likely a stream state issue in `SendSpinServer`
@@ -466,7 +460,7 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 
 ### Phase 3 — Sendspin Integration
 
-**Goal:** Audio leaves the Pi and plays on a remote device via Sendspin. Latency validated. Local Pi playback retired as primary path.
+**Goal:** Audio leaves the Pi and plays on a remote browser player via Sendspin. Local Pi playback is retired as the primary path.
 
 #### Sendspin source setup
 - [x] Add `aiosendspin` to plugin dependencies; keep server-only extras explicit in `manifest.json` (`av`, `numpy`, `pillow`) because RotorHazard plugin install flows may not preserve extras reliably
@@ -474,29 +468,8 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 - [x] Sendspin source accepts WAV input from the plugin audio queue worker
 - [x] In-process mode: plugin drives `aiosendspin` directly (Python 3.12+)
 
-#### Player target configuration
-- [ ] Plugin setting: Sendspin player target list (one or more entries)
-- [ ] Each target: name label + manual URL (e.g. `ws://192.168.1.50:5000/sendspin`)
-- [ ] UI: add / remove targets
-- [ ] Plugin connects to all configured targets on startup
-
-#### Health checks
-- [ ] Sendspin source running: check on plugin init, show status in panel
-- [ ] Per-target: player connected / disconnected / unreachable
-- [ ] Status refreshes automatically (poll interval: 10 seconds)
-- [ ] Disconnected target shows warning in panel; does not disable other targets
-
-#### Latency validation
-- [ ] Log timestamps per job: event received → WAV ready → Sendspin submitted → (if measurable) playback confirmed
-- [ ] Run test race on actual hardware (Pi → Sendspin → NUC player)
-- [ ] Validate back-to-back lap callouts on actual hardware/browser player: no audible stream reset when a new lap arrives during playback
-- [ ] Document measured latency in this document under a "Validated Latency" subsection
-- [ ] If latency > 1 second for cached phrases: investigate persistent stream / keep-alive connection
-- [ ] Decision recorded: stream-per-WAV vs persistent stream
-
 #### Test phrase through Sendspin
 - [x] Test button sends phrase through the full stack: Piper → cache → in-process `aiosendspin` → connected player(s)
-- [ ] Panel shows: "Last test: sent to [target name] at [time]"
 
 #### Browser player rewrite
 - [x] Browser player served at `/player`
@@ -505,19 +478,19 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 - [x] Configure Vite build output to `custom_plugins/local_voice/player/`
 - [x] Replace template UI with `SendspinPlayer`-based app
 - [x] Add compact diagnostics for sync drift, correction mode, reconnects, and player state
-- [ ] Validate browser player against native Sendspin player for sync and hiccup recovery
+- [x] Plugin panel links to `/player`; live connection state is owned by the browser player UI, not the RotorHazard settings panel
 
 **Success criteria:**
-- [ ] "Test phrase" plays audibly through the Sendspin player on a remote device
-- [ ] Lap callout latency (cached phrase, Pi to player) measured and documented
-- [ ] Player disconnect is shown in the UI; plugin continues without crash
-- [ ] Disconnecting and reconnecting the player recovers automatically
+- [x] "Test phrase" plays audibly through the browser player on a remote device
+- [x] Back-to-back lap callouts play without an audible stream reset
+- [x] Browser player disconnect does not crash the plugin
+- [x] Disconnecting and reconnecting the browser player recovers playback automatically
 
 ---
 
 ## Post-MVP Phases
 
-Post-MVP work starts after the local MVP is race-day usable: full local race callouts, caching/pre-generation, in-process Sendspin, browser player, and measured local latency. This section includes upstream-dependent RotorHazard features and deployment modes that are useful but not required for the first stable release.
+Post-MVP work starts after the local MVP is race-day usable: full local race callouts, caching/pre-generation, in-process Sendspin, and browser player playback. This section includes upstream-dependent RotorHazard features, deployment modes, live status polish, and formal latency measurements that are useful but not required for the first stable release.
 
 ---
 
@@ -613,7 +586,7 @@ Post-MVP work starts after the local MVP is race-day usable: full local race cal
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Sendspin stream latency too high for short callouts | High | Measure early; persistent stream / keep-alive source if needed |
+| Sendspin browser playback hiccups on race network | Medium | Validate `/player` on actual event network and speaker hardware before race day |
 | Sendspin public preview API changes | Medium | Pin version, document upgrade path |
 | Python 3.12 not available on Pi | Medium | Use sidecar variant B |
 | piper-tts too slow on Pi for uncached callouts | High | WAV caching now; planned heat-load pre-caching; Wyoming Piper on separate machine as fallback |

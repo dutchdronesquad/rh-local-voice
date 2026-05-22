@@ -42,7 +42,7 @@ _AUDIO_CHECK_WAV = _ASSET_DIR / "moavii-foreign.wav"
 _UI_NOTIFY_PREFIXES = ("Downloading model", "Loading model", "Model loaded")
 
 # Maximum lap number to pre-cache per pilot when a heat loads.
-_PRECACHE_MAX_LAPS = 20
+_PRECACHE_MAX_LAPS = 15
 
 
 class LocalVoicePlugin:

@@ -16,7 +16,7 @@ SENDSPIN_PORT = 8927
 
 DEFAULT_TEST_PHRASE = "Pilot Rocket finishes lap three in twelve point four seconds."
 DEFAULT_MODEL = "en_GB-alan-medium"
-DEFAULT_SPEED = "1.2"
+DEFAULT_SPEED = "1"
 DEFAULT_NOISE_SCALE = "0.667"
 DEFAULT_NOISE_W_SCALE = "0.8"
 

@@ -420,13 +420,13 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 
 ### Phase 2 — Race Events + Audio Queue
 
-**Goal:** Lap/text callout filters and crossing events are wired. Async queue has priority and expiry. Heat-load cache handling exists; full pre-caching remains backlog.
+**Goal:** Lap/text callout filters are wired. Async queue has priority and expiry. Pilot phrases are pre-cached on heat load.
 
 #### Current callout inputs
 - [x] `Flt.EMIT_PHONETIC_DATA` → "Pilot [callsign], Lap [n]" + optional lap time
 - [x] `Flt.EMIT_PHONETIC_TEXT` → server-originated text callouts via TTS
 - [x] Winner callouts are covered and manually validated through `Flt.EMIT_PHONETIC_TEXT` (`domain='race_winner'`, `winner_flag=True` gets high priority)
-- [x] `Evt.HEAT_SET` → clear ephemeral lap-time WAVs for the selected model
+- [x] `Evt.HEAT_SET` → clear ephemeral lap-time WAVs + pre-cache pilot phrases for the loaded heat
 
 #### Async audio queue
 - [x] Single `queue.PriorityQueue` with a dedicated daemon worker thread (`audio_queue.py`)
@@ -437,21 +437,14 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 - [x] Sendspin appends queued WAVs to the active stream; normal lap callouts do not intentionally stop/reset current playback
 
 #### Audio profile settings
-- [ ] Pilot callsign: on/off — not separately configurable yet
-- [ ] Lap number: on/off — not separately configurable yet
-- [ ] Lap time: on/off — not separately configurable yet
-- [ ] Winner callout: on/off — not separately configurable yet
-- [ ] Pilot finished callout: on/off — not separately configurable yet
-- [x] Crossing enter/exit beeps: on/off
 - [x] All implemented toggles exposed in plugin settings panel
 
 #### Heat-load cache handling
 - [x] Hook into `Evt.HEAT_SET`
 - [x] Clear ephemeral lap-time WAV files when a heat loads
-- [ ] Generate WAVs for all pilot callsigns in the loaded heat
-- [ ] Generate WAVs for all fixed phrases
-- [ ] Pre-caching runs in a background thread; does not block heat load or event handling
-- [ ] Log how many files were generated and how long it took
+- [x] Pre-synthesize "[name], Lap [n]" for all pilots in the loaded heat (n=1–20)
+- [x] Pre-caching runs in the synth thread pool; does not block heat load or event handling
+- [x] Log how many new WAVs were generated and how long it took
 
 #### Duplicate prevention UI
 - [x] Plugin panel shows two separate markdown warnings (Voice Volume + browser beeps)
@@ -463,7 +456,7 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 
 **Success criteria:**
 - [x] A full simulated race (stage → start → laps → winner → stop) produces the correct callouts in the log
-- [ ] Pilot names and lap numbers are pre-generated when a heat loads; generation time logged
+- [x] Pilot names and lap numbers are pre-generated when a heat loads; generation time logged
 - [x] Piper crash mid-race does not affect RotorHazard timing or results
 - [x] Expired callouts are dropped and logged, never played late
 

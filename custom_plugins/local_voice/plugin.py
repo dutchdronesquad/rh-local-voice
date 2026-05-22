@@ -41,6 +41,9 @@ _AUDIO_CHECK_WAV = _ASSET_DIR / "moavii-foreign.wav"
 # Status messages that are surfaced to the UI as notifications.
 _UI_NOTIFY_PREFIXES = ("Downloading model", "Loading model", "Model loaded")
 
+# Maximum lap number to pre-cache per pilot when a heat loads.
+_PRECACHE_MAX_LAPS = 20
+
 
 class LocalVoicePlugin:
     """RotorHazard plugin for local Piper TTS generation and WAV caching."""
@@ -167,20 +170,23 @@ class LocalVoicePlugin:
     # Event handlers
     # ------------------------------------------------------------------
 
-    def _on_heat_set(self, _args: dict[str, Any]) -> None:
+    def _on_heat_set(self, args: dict[str, Any]) -> None:
         """Wipe ephemeral lap-time WAVs and queued audio when a new heat is selected."""
         dropped = self._audio_queue.clear()
         if dropped:
             logger.info("Local Voice cleared %d queued audio jobs on heat set", dropped)
         tmp_dir = self._tts.tmp_dir_for_model(self._model_name())
-        if not tmp_dir.exists():
-            return
-        count = 0
-        for wav_file in tmp_dir.glob("*.wav"):
-            wav_file.unlink(missing_ok=True)
-            count += 1
-        if count:
-            logger.info("Local Voice cleared %d ephemeral WAV files", count)
+        if tmp_dir.exists():
+            count = sum(
+                1
+                for wav_file in tmp_dir.glob("*.wav")
+                if wav_file.unlink(missing_ok=True) is None
+            )
+            if count:
+                logger.info("Local Voice cleared %d ephemeral WAV files", count)
+        heat_id = args.get("heat_id")
+        if heat_id and self._enabled():
+            self._synth_pool.submit(self._precache_heat, heat_id)
 
     # ------------------------------------------------------------------
     # UI button handlers
@@ -283,6 +289,38 @@ class LocalVoicePlugin:
 
     def _warmup_model(self) -> None:
         self._tts.warmup(self._model_name(), self._synth_params())
+
+    def _precache_heat(self, heat_id: int) -> None:
+        """Pre-synthesize pilot + lap-number phrases for all pilots in the heat."""
+        slots = self._rhapi.db.slots_by_heat(heat_id)
+        model_name = self._model_name()
+        params = self._synth_params()
+        started = time.perf_counter()
+        count = 0
+        for slot in slots:
+            if not slot.pilot_id:
+                continue
+            pilot = self._rhapi.db.pilot_by_id(slot.pilot_id)
+            if pilot is None:
+                continue
+            name = pilot.phonetic or pilot.callsign
+            if not name:
+                continue
+            for lap in range(1, _PRECACHE_MAX_LAPS + 1):
+                result = self._tts.synthesize_to_cache(
+                    text=f"{name}, Lap {lap}",
+                    model_name=model_name,
+                    params=params,
+                )
+                if result is not None and not result.cache_hit:
+                    count += 1
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "Local Voice pre-cached %d new WAV(s) for heat %s in %dms",
+            count,
+            heat_id,
+            elapsed_ms,
+        )
 
     def _set_status(self, status: str) -> None:
         logger.info("Local Voice status: %s", status)

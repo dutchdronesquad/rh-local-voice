@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import json
 import logging
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -12,7 +15,9 @@ import wave
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from piper.config import SynthesisConfig
+import onnxruntime
+from piper import PiperVoice
+from piper.config import PiperConfig, SynthesisConfig
 
 from .const import VOICE_MODELS
 
@@ -61,6 +66,7 @@ class PiperSynthesizer:
         self._set_status = set_status
         self._voice: Any | None = None
         self._loaded_model: str | None = None
+        self._voice_lock = threading.Lock()
 
         self._model_dir.mkdir(parents=True, exist_ok=True)
         self._tts_dir.mkdir(parents=True, exist_ok=True)
@@ -75,8 +81,9 @@ class PiperSynthesizer:
     ) -> SynthesisResult | None:
         """Return a cached WAV for text, synthesizing it with Piper if needed.
 
-        When *subdir* is given the WAV is written to ``{model_dir}/{subdir}/``
-        instead of directly under the model directory.
+        When *subdir* is given the WAV is written to
+        ``{tts_dir}/{model_name}/{subdir}/`` instead of directly under the
+        model directory.
         """
         normalized_text = self.normalize_text(text)
         if not normalized_text:
@@ -106,13 +113,12 @@ class PiperSynthesizer:
             return None
 
         try:
-            syn_config = SynthesisConfig(
-                length_scale=1.0 / float(params.speed),
-                noise_scale=float(params.noise),
-                noise_w_scale=float(params.noise_w),
-            )
-            with wave.open(str(wav_path), "wb") as wav_file:
-                voice.synthesize_wav(normalized_text, wav_file, syn_config=syn_config)
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as wav_file:
+                voice.synthesize_wav(
+                    normalized_text, wav_file, syn_config=self._make_syn_config(params)
+                )
+            _prepend_silence(buf, wav_path)
         except Exception as exc:
             wav_path.unlink(missing_ok=True)
             self._set_status(f"Synthesis failed: {exc}")
@@ -145,42 +151,76 @@ class PiperSynthesizer:
         """Return the test-phrase subdirectory for a specific model."""
         return self._tts_dir / model_name / "test"
 
+    def precache_dir_for_model(self, model_name: str) -> Path:
+        """Return the pre-generated lap phrase subdirectory for a specific model."""
+        return self._tts_dir / model_name / "precache"
+
     def cache_status_text(self) -> str:
         """Return cache directory and total file-count status."""
         cached_files = sum(1 for path in self._tts_dir.rglob("*.wav") if path.is_file())
         return f"{self._tts_dir} | {cached_files} cached WAV files"
 
+    def warmup(self, model_name: str, params: SynthesisParams) -> None:
+        """Load the model and run a short synthesis to warm up ONNX Runtime."""
+        voice = self._load_voice(model_name)
+        if voice is None:
+            return
+        try:
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as wav_file:
+                voice.synthesize_wav(
+                    "ready", wav_file, syn_config=self._make_syn_config(params)
+                )
+            logger.info("Local Voice: model warm-up complete for %s", model_name)
+        except Exception:
+            logger.exception("Local Voice: model warm-up failed for %s", model_name)
+
     def _load_voice(self, model_name: str) -> Any | None:
-        """Load the selected Piper model once, downloading files if necessary."""
+        """Load the selected Piper model once, downloading files if necessary.
+
+        The ONNX session is created with ``intra_op_num_threads=1`` so that
+        multiple synthesis workers can each occupy exactly one CPU core without
+        competing for threads — important on low-core hardware like a Pi 4.
+        """
         if self._voice is not None and self._loaded_model == model_name:
             return self._voice
 
-        model_path = self._ensure_model_files(model_name)
-        if model_path is None:
-            return None
+        with self._voice_lock:
+            # Re-check inside the lock — another thread may have loaded it first.
+            if self._voice is not None and self._loaded_model == model_name:
+                return self._voice
 
-        try:
-            from piper import PiperVoice  # noqa: PLC0415
-        except ImportError:
-            self._set_status(
-                "piper-tts is not installed in the RotorHazard environment"
-            )
-            logger.exception("piper-tts import failed")
-            return None
+            model_path = self._ensure_model_files(model_name)
+            if model_path is None:
+                return None
 
-        try:
-            self._set_status(f"Loading model {model_name}")
-            self._voice = PiperVoice.load(str(model_path))
-            self._loaded_model = model_name
-            self._set_status(f"Model loaded: {model_name}")
-        except Exception as exc:
-            self._voice = None
-            self._loaded_model = None
-            self._set_status(f"Model load failed: {exc}")
-            logger.exception("Local Voice failed to load Piper model %s", model_name)
-            return None
+            try:
+                self._set_status(f"Loading model {model_name}")
+                config_path = model_path.with_suffix(".onnx.json")
+                with config_path.open("r", encoding="utf-8") as f:
+                    config_dict = json.load(f)
+                sess_options = onnxruntime.SessionOptions()
+                sess_options.intra_op_num_threads = 1
+                self._voice = PiperVoice(
+                    config=PiperConfig.from_dict(config_dict),
+                    session=onnxruntime.InferenceSession(
+                        str(model_path),
+                        sess_options=sess_options,
+                        providers=["CPUExecutionProvider"],
+                    ),
+                )
+                self._loaded_model = model_name
+                self._set_status(f"Model loaded: {model_name}")
+            except Exception as exc:
+                self._voice = None
+                self._loaded_model = None
+                self._set_status(f"Model load failed: {exc}")
+                logger.exception(
+                    "Local Voice failed to load Piper model %s", model_name
+                )
+                return None
 
-        return self._voice
+            return self._voice
 
     def _ensure_model_files(self, model_name: str) -> Path | None:
         """Ensure the selected Piper model and JSON config are present locally."""
@@ -229,6 +269,14 @@ class PiperSynthesizer:
         partial_path.replace(destination)
 
     @staticmethod
+    def _make_syn_config(params: SynthesisParams) -> SynthesisConfig:
+        return SynthesisConfig(
+            length_scale=1.0 / float(params.speed),
+            noise_scale=float(params.noise),
+            noise_w_scale=float(params.noise_w),
+        )
+
+    @staticmethod
     def normalize_text(text: str) -> str:
         """Normalize text before synthesis and cache-key generation."""
         normalized = unicodedata.normalize("NFKC", text).strip()
@@ -245,6 +293,29 @@ class PiperSynthesizer:
         """Return whether a cached path can be opened as a WAV file."""
         try:
             with wave.open(str(path), "rb") as wav_file:
-                return wav_file.getnframes() >= 0
+                return wav_file.getnframes() > 0
         except (OSError, wave.Error):
             return False
+
+
+_LEADING_SILENCE_MS = 80
+
+
+def _prepend_silence(src: io.BytesIO, dest: Path) -> None:
+    """Write *src* WAV to *dest* with a short silence prepended.
+
+    Piper occasionally produces a weak or clipped opening frame.  A brief
+    run of zero-valued samples before the speech gives the decoder and the
+    playback pipeline enough headroom to start cleanly.
+    """
+    src.seek(0)
+    with wave.open(src, "rb") as r:
+        params = r.getparams()
+        pcm = r.readframes(r.getnframes())
+
+    silence_frames = int(params.framerate * _LEADING_SILENCE_MS / 1000)
+    silence = b"\x00" * silence_frames * params.nchannels * params.sampwidth
+
+    with wave.open(str(dest), "wb") as w:
+        w.setparams(params)
+        w.writeframes(silence + pcm)

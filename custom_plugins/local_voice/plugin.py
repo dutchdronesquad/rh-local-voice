@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
-import math
-import struct
+import os
+import threading
 import time
-import wave
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -16,13 +16,11 @@ from filtermanager import Flt
 
 from .audio_queue import AudioQueue, Priority
 from .const import (
-    CONFIG_SECTION,
     DEFAULT_MODEL,
     DEFAULT_NOISE_SCALE,
     DEFAULT_NOISE_W_SCALE,
     DEFAULT_SPEED,
     DEFAULT_TEST_PHRASE,
-    ENABLE_CROSSING_BEEPS_OPTION,
     ENABLE_OPTION,
     NOISE_SCALE_OPTION,
     NOISE_W_SCALE_OPTION,
@@ -40,6 +38,14 @@ logger = logging.getLogger(__name__)
 
 _ASSET_DIR = Path(__file__).parent / "assets"
 _AUDIO_CHECK_WAV = _ASSET_DIR / "moavii-foreign.wav"
+
+# Status messages that are surfaced to the UI as notifications.
+_UI_NOTIFY_PREFIXES = ("Downloading model", "Loading model", "Model loaded")
+
+# Maximum lap number to pre-cache per pilot when a heat loads.
+_PRECACHE_MAX_LAPS = 15
+_PRECACHE_SUBDIR = "precache"
+_LAP_CALLOUT_EXPIRY_SEC = 10.0
 
 
 class LocalVoicePlugin:
@@ -60,9 +66,11 @@ class LocalVoicePlugin:
         self._sendspin = SendSpinServer(port=SENDSPIN_PORT)
         self._sendspin.start()
         self._audio_queue = AudioQueue(player=self._sendspin.play)
-        self._beep_wav = self._generate_beep(cache_root / "tts" / "beep.wav")
+        self._precache_generation = 0
+        self._precache_lock = threading.Lock()
         self._synth_pool = ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="local_voice_synth"
+            max_workers=os.cpu_count() or 4,
+            thread_name_prefix="local_voice_synth",
         )
 
         register_ui(
@@ -74,6 +82,7 @@ class LocalVoicePlugin:
         )
         self._register_events()
         self._register_filters()
+        self._synth_pool.submit(self._warmup_model)
         logger.info("Local Voice plugin initialized")
 
     # ------------------------------------------------------------------
@@ -82,13 +91,12 @@ class LocalVoicePlugin:
 
     def _register_events(self) -> None:
         self._rhapi.events.on(
-            Evt.CROSSING_ENTER, self._on_crossing, name="local_voice_crossing_enter"
-        )
-        self._rhapi.events.on(
-            Evt.CROSSING_EXIT, self._on_crossing, name="local_voice_crossing_exit"
-        )
-        self._rhapi.events.on(
             Evt.HEAT_SET, self._on_heat_set, name="local_voice_heat_set"
+        )
+        self._rhapi.events.on(
+            Evt.DATABASE_RESET,
+            self._on_event_cache_reset,
+            name="local_voice_database_reset",
         )
 
     def _register_filters(self) -> None:
@@ -119,7 +127,7 @@ class LocalVoicePlugin:
             "pilot": payload.get("pilot"),
             "callsign": payload.get("callsign"),
             "phonetic": payload.get("phonetic"),
-            "expires_at": time.monotonic() + 5.0,
+            "expires_at": time.monotonic() + _LAP_CALLOUT_EXPIRY_SEC,
         }
         self._synth_pool.submit(self._synthesize_lap, snapshot)
         return payload
@@ -138,28 +146,16 @@ class LocalVoicePlugin:
         lap_number = snapshot["lap"]
         pilot_name = snapshot.get("pilot") or snapshot.get("callsign")
         phonetic_time = snapshot.get("phonetic")
-
-        part1 = ", ".join(
-            filter(
-                None,
-                [
-                    str(pilot_name) if pilot_name else None,
-                    f"Lap {lap_number}",
-                ],
-            )
-        )
+        part1 = f"{pilot_name}, Lap {lap_number}" if pilot_name else f"Lap {lap_number}"
 
         wav_paths: list[Path] = []
-        path = self.synthesize_to_cache(part1)
-        if path:
+        if path := self._synthesize(part1, _PRECACHE_SUBDIR):
             wav_paths.append(path)
-        if phonetic_time:
-            path = self.synthesize_ephemeral(str(phonetic_time))
-            if path:
-                wav_paths.append(path)
+        if phonetic_time and (path := self._synthesize(str(phonetic_time), "tmp")):
+            wav_paths.append(path)
 
         if wav_paths:
-            label = part1 + (f", {phonetic_time}" if phonetic_time else "")
+            label = f"{part1}, {phonetic_time}" if phonetic_time else part1
             self._audio_queue.enqueue(
                 text=label,
                 wav_paths=wav_paths,
@@ -175,35 +171,37 @@ class LocalVoicePlugin:
         if not isinstance(text, str) or not text.strip():
             return payload
         priority = Priority.HIGH if payload.get("winner_flag") else Priority.NORMAL
-        expires_at = time.monotonic() + 5.0
-        self._synth_pool.submit(self._enqueue, text.strip(), priority, expires_at)
+        self._synth_pool.submit(
+            self._enqueue, text.strip(), priority, time.monotonic() + 5.0
+        )
         return payload
 
     # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
 
-    def _on_heat_set(self, _args: dict[str, Any]) -> None:
-        """Wipe ephemeral lap-time WAVs when a new heat is selected."""
-        tmp_dir = self._tts.tmp_dir_for_model(self._model_name())
-        if not tmp_dir.exists():
-            return
-        count = 0
-        for wav_file in tmp_dir.glob("*.wav"):
-            wav_file.unlink(missing_ok=True)
-            count += 1
-        if count:
-            logger.info("Local Voice cleared %d ephemeral WAV files", count)
+    def _on_heat_set(self, args: dict[str, Any]) -> None:
+        """Wipe ephemeral lap-time WAVs and queued audio when a new heat is selected."""
+        with self._precache_lock:
+            self._precache_generation += 1
+            precache_generation = self._precache_generation
 
-    def _on_crossing(self, _args: dict[str, Any]) -> None:
-        if not self._enabled() or not self._flag(
-            ENABLE_CROSSING_BEEPS_OPTION, default=False
-        ):
-            return
-        if self._beep_wav is not None:
-            self._audio_queue.enqueue(
-                text="beep", wav_paths=[self._beep_wav], priority=Priority.LOW
-            )
+        dropped = self._audio_queue.clear()
+        if dropped:
+            logger.info("Local Voice cleared %d queued audio jobs on heat set", dropped)
+        model_name = self._model_name()
+        self._clear_wavs(self._tts.tmp_dir_for_model(model_name), "ephemeral")
+        heat_id = args.get("heat_id")
+        if heat_id and self._enabled():
+            self._synth_pool.submit(self._precache_heat, heat_id, precache_generation)
+
+    def _on_event_cache_reset(self, _args: dict[str, Any]) -> None:
+        """Wipe event-specific WAVs when RotorHazard starts a new data set."""
+        with self._precache_lock:
+            self._precache_generation += 1
+        model_name = self._model_name()
+        self._clear_wavs(self._tts.tmp_dir_for_model(model_name), "ephemeral")
+        self._clear_wavs(self._tts.precache_dir_for_model(model_name), "pre-cache")
 
     # ------------------------------------------------------------------
     # UI button handlers
@@ -216,7 +214,7 @@ class LocalVoicePlugin:
         ).strip()
         if not text:
             text = DEFAULT_TEST_PHRASE
-        wav_path = self.synthesize_test(text)
+        wav_path = self._synthesize(text, "test")
         if wav_path is None:
             self._rhapi.ui.message_alert("Local Voice test failed - check logs")
             return
@@ -250,6 +248,9 @@ class LocalVoicePlugin:
 
     def clear_tts_cache(self, _args: dict[str, Any] | None = None) -> None:
         """Delete all cached WAV files for the currently selected model."""
+        with self._precache_lock:
+            self._precache_generation += 1
+
         model_name = self._model_name()
         model_tts_dir = self._tts.tts_dir_for_model(model_name)
         if not model_tts_dir.exists():
@@ -266,60 +267,31 @@ class LocalVoicePlugin:
     # Synthesis helpers
     # ------------------------------------------------------------------
 
-    def synthesize_to_cache(self, text: str) -> Path | None:
-        """Return a cached WAV path for text, synthesizing with Piper if needed."""
+    def _synthesize(self, text: str, subdir: str = "") -> Path | None:
+        """Synthesize text with the current model and params, return WAV path."""
         result = self._tts.synthesize_to_cache(
             text=text,
             model_name=self._model_name(),
             params=self._synth_params(),
+            subdir=subdir,
         )
         if result is None:
             return None
         self._record_generation(result)
         return result.wav_path
 
-    def synthesize_ephemeral(self, text: str) -> Path | None:
-        """Synthesize to the tmp dir — cleared on heat change."""
-        result = self._tts.synthesize_to_cache(
-            text=text,
-            model_name=self._model_name(),
-            params=self._synth_params(),
-            subdir="tmp",
-        )
-        if result is None:
-            return None
-        self._record_generation(result)
-        return result.wav_path
-
-    def synthesize_test(self, text: str) -> Path | None:
-        """Synthesize to the test dir — separate from the race cache."""
-        result = self._tts.synthesize_to_cache(
-            text=text,
-            model_name=self._model_name(),
-            params=self._synth_params(),
-            subdir="test",
-        )
-        if result is None:
-            return None
-        self._record_generation(result)
-        return result.wav_path
-
-    def _enqueue(
-        self, text: str, priority: Priority, expires_at: float | None = None
-    ) -> None:
+    def _enqueue(self, text: str, priority: Priority, expires_at: float) -> None:
         """Synthesize text and push it onto the audio queue."""
-        if expires_at is not None and time.monotonic() > expires_at:
+        if time.monotonic() > expires_at:
             logger.info("Local Voice dropped expired enqueue job: '%s'", text)
             return
-        wav_path = self.synthesize_to_cache(text)
-        if wav_path is None:
-            return
-        expiry_sec = (
-            max(0.0, expires_at - time.monotonic()) if expires_at is not None else 5.0
-        )
-        self._audio_queue.enqueue(
-            text=text, wav_paths=[wav_path], priority=priority, expiry_sec=expiry_sec
-        )
+        if wav_path := self._synthesize(text):
+            self._audio_queue.enqueue(
+                text=text,
+                wav_paths=[wav_path],
+                priority=priority,
+                expiry_sec=max(0.0, expires_at - time.monotonic()),
+            )
 
     def _record_generation(self, result: SynthesisResult) -> None:
         source = "cache hit" if result.cache_hit else "synthesized"
@@ -333,39 +305,71 @@ class LocalVoicePlugin:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _generate_beep(
-        path: Path,
-        freq: int = 880,
-        duration_ms: int = 120,
-        sample_rate: int = 22050,
-    ) -> Path | None:
-        """Write a short sine-tone WAV to path and return it, or None on error."""
-        try:
-            if path.exists():
-                return path
-            num_samples = int(sample_rate * duration_ms / 1000)
-            fade_samples = int(sample_rate * 0.01)  # 10 ms fade in/out
-            with wave.open(str(path), "wb") as wav_file:
-                wav_file.setnchannels(1)
-                wav_file.setsampwidth(2)
-                wav_file.setframerate(sample_rate)
-                for i in range(num_samples):
-                    fade = min(i, num_samples - i, fade_samples) / fade_samples
-                    angle = 2 * math.pi * freq * i / sample_rate
-                    sample = int(32767 * fade * math.sin(angle))
-                    wav_file.writeframes(struct.pack("<h", sample))
-        except Exception:
-            logger.exception("Local Voice could not generate beep WAV")
-            return None
-        else:
-            return path
+    def _warmup_model(self) -> None:
+        self._tts.warmup(self._model_name(), self._synth_params())
+
+    def _precache_heat(self, heat_id: int, generation: int) -> None:
+        """Pre-synthesize pilot + lap-number phrases for all pilots in the heat."""
+        slots = self._rhapi.db.slots_by_heat(heat_id)
+        model_name = self._model_name()
+        params = self._synth_params()
+        started = time.perf_counter()
+        count = 0
+        for slot in slots:
+            if not slot.pilot_id:
+                continue
+            pilot = self._rhapi.db.pilot_by_id(slot.pilot_id)
+            if pilot is None:
+                continue
+            name = pilot.phonetic or pilot.callsign
+            if not name:
+                continue
+            for lap in range(1, _PRECACHE_MAX_LAPS + 1):
+                if not self._precache_is_current(generation):
+                    logger.info(
+                        "Local Voice stopped stale pre-cache job for heat %s", heat_id
+                    )
+                    return
+                result = self._tts.synthesize_to_cache(
+                    text=f"{name}, Lap {lap}",
+                    model_name=model_name,
+                    params=params,
+                    subdir=_PRECACHE_SUBDIR,
+                )
+                if result is not None and not result.cache_hit:
+                    count += 1
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        logger.info(
+            "Local Voice pre-cached %d new WAV(s) for heat %s in %dms",
+            count,
+            heat_id,
+            elapsed_ms,
+        )
+
+    def _clear_wavs(self, directory: Path, label: str) -> None:
+        """Delete WAV files under a cache subdirectory."""
+        if not directory.exists():
+            return
+        count = sum(
+            1
+            for wav_file in directory.rglob("*.wav")
+            if wav_file.unlink(missing_ok=True) is None
+        )
+        if count:
+            logger.info("Local Voice cleared %d %s WAV files", count, label)
+
+    def _precache_is_current(self, generation: int) -> bool:
+        with self._precache_lock:
+            return generation == self._precache_generation
 
     def _set_status(self, status: str) -> None:
         logger.info("Local Voice status: %s", status)
+        if any(status.startswith(prefix) for prefix in _UI_NOTIFY_PREFIXES):
+            with contextlib.suppress(Exception):
+                self._rhapi.ui.message_notify(f"Local Voice: {status}")
 
     def _enabled(self) -> bool:
-        return bool(self._option(ENABLE_OPTION, default=False))
+        return self._flag(ENABLE_OPTION, default=False)
 
     def _flag(self, option: str, *, default: bool = True) -> bool:
         value = self._option(option, default=default)
@@ -379,36 +383,18 @@ class LocalVoicePlugin:
 
     def _synth_params(self) -> SynthesisParams:
         return SynthesisParams(
-            speed=self._speed_value(),
-            noise=self._noise_scale_value(),
-            noise_w=self._noise_w_scale_value(),
+            speed=self._float_option(SPEECH_SPEED_OPTION, DEFAULT_SPEED),
+            noise=self._float_option(NOISE_SCALE_OPTION, DEFAULT_NOISE_SCALE),
+            noise_w=self._float_option(NOISE_W_SCALE_OPTION, DEFAULT_NOISE_W_SCALE),
         )
 
-    def _speed_value(self) -> str:
-        value = self._option(SPEECH_SPEED_OPTION, default=DEFAULT_SPEED)
+    def _float_option(self, option: str, default: str) -> str:
+        value = self._option(option, default=default)
         try:
             return f"{float(value):.3f}"
         except (TypeError, ValueError):
-            return f"{float(DEFAULT_SPEED):.3f}"
-
-    def _noise_scale_value(self) -> str:
-        value = self._option(NOISE_SCALE_OPTION, default=DEFAULT_NOISE_SCALE)
-        try:
-            return f"{float(value):.3f}"
-        except (TypeError, ValueError):
-            return f"{float(DEFAULT_NOISE_SCALE):.3f}"
-
-    def _noise_w_scale_value(self) -> str:
-        value = self._option(NOISE_W_SCALE_OPTION, default=DEFAULT_NOISE_W_SCALE)
-        try:
-            return f"{float(value):.3f}"
-        except (TypeError, ValueError):
-            return f"{float(DEFAULT_NOISE_W_SCALE):.3f}"
+            return f"{float(default):.3f}"
 
     def _option(self, name: str, *, default: Any) -> Any:
-        config = getattr(self._rhapi.config, "get_all", {})
-        if isinstance(config, dict):
-            section = config.get(CONFIG_SECTION, {})
-            if isinstance(section, dict) and name in section:
-                return section[name]
-        return default
+        value = self._rhapi.db.option(name, default=default)
+        return default if value is False else value

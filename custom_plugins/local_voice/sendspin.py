@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import threading
+import time
 import wave
 from typing import TYPE_CHECKING, Protocol
 
@@ -61,6 +62,8 @@ class SendSpinServer:
     RotorHazard plugin callbacks are synchronous, while aiosendspin is asyncio
     native. This class owns a background event loop and exposes blocking
     ``play()`` / ``stop()`` methods for the existing ``AudioQueue`` worker.
+    Normal ``play()`` calls append to the active stream instead of stopping it,
+    so queued lap callouts can be scheduled back-to-back without audible resets.
     """
 
     def __init__(
@@ -78,7 +81,11 @@ class SendSpinServer:
         self._server: AioSendspinServer | None = None
         self._ready = threading.Event()
         self._thread: threading.Thread | None = None
-        self._stream_task: asyncio.Task[None] | None = None
+        self._stream_lock: asyncio.Lock | None = None
+        self._stream_group: SendspinGroup | None = None
+        self._stream: _PushStream | None = None
+        self._next_play_start_us: int | None = None
+        self._idle_stop_task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
         """Start the Sendspin server in a background daemon thread."""
@@ -89,8 +96,8 @@ class SendSpinServer:
         )
         self._thread.start()
 
-    def play(self, wav_paths: list[Path]) -> None:
-        """Stream WAV files to connected clients. Blocks until done."""
+    def play(self, wav_paths: list[Path], expires_at: float | None = None) -> None:
+        """Queue WAV files to connected clients without resetting active playback."""
         if not self._ready.wait(timeout=5.0) or self._loop is None:
             logger.warning("Local Voice: Sendspin server not yet ready")
             return
@@ -104,7 +111,7 @@ class SendSpinServer:
         duration_s = _wav_total_duration(wav_paths)
         timeout = max(30.0, duration_s + _INITIAL_PLAYBACK_DELAY_S + _TIMEOUT_MARGIN_S)
         future = asyncio.run_coroutine_threadsafe(
-            self._play_stream(wav_paths), self._loop
+            self._append_to_stream(wav_paths, expires_at), self._loop
         )
         try:
             future.result(timeout=timeout)
@@ -168,6 +175,7 @@ class SendSpinServer:
             discover_clients=False,
         )
         self._server = server
+        self._stream_lock = asyncio.Lock()
         logger.info(
             "Local Voice: Sendspin server listening on %s:%s",
             self._host,
@@ -176,36 +184,48 @@ class SendSpinServer:
 
     async def _close_server(self) -> None:
         if self._server is not None:
+            await self._stop_stream()
             await self._server.close()
             self._server = None
 
-    async def _play_stream(self, wav_paths: list[Path]) -> None:
-        await self._stop_stream()
-        self._stream_task = asyncio.create_task(self._stream_all(wav_paths))
-        try:
-            await self._stream_task
-        except asyncio.CancelledError:
-            logger.info("Local Voice: Sendspin stream cancelled")
-        finally:
-            self._stream_task = None
-
     async def _stop_stream(self) -> None:
-        task = self._stream_task
-        if task is not None and not task.done():
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        if self._stream_task is task:
-            self._stream_task = None
+        lock = self._stream_lock
+        if lock is None:
+            return
+        async with lock:
+            await self._stop_stream_locked(stop_all_client_groups=True)
+
+    async def _stop_stream_locked(self, *, stop_all_client_groups: bool) -> None:
+        self._cancel_idle_stop()
 
         server = self._server
+        group = self._stream_group
+        self._stream = None
+        self._stream_group = None
+        self._next_play_start_us = None
         if server is None:
             return
-        stop_tasks = [client.group.stop() for client in server.connected_clients]
-        if stop_tasks:
-            await asyncio.gather(*stop_tasks, return_exceptions=True)
+        if stop_all_client_groups:
+            stop_tasks = [client.group.stop() for client in server.connected_clients]
+            if stop_tasks:
+                await asyncio.gather(*stop_tasks, return_exceptions=True)
+        elif group is not None:
+            await group.stop()
 
-    async def _stream_all(self, wav_paths: list[Path]) -> None:
+    async def _append_to_stream(
+        self, wav_paths: list[Path], expires_at: float | None
+    ) -> None:
+        lock = self._stream_lock
+        if lock is None:
+            logger.warning("Local Voice: Sendspin stream lock not ready")
+            return
+        async with lock:
+            self._cancel_idle_stop()
+            await self._append_to_stream_locked(wav_paths, expires_at)
+
+    async def _append_to_stream_locked(
+        self, wav_paths: list[Path], expires_at: float | None
+    ) -> None:
         server = self._server
         if server is None:
             return
@@ -214,42 +234,136 @@ class SendSpinServer:
             logger.info("Local Voice: no Sendspin clients connected - audio dropped")
             return
 
-        group = clients[0].group
+        group, stream = await self._ensure_stream()
+        if group is None or stream is None:
+            return
         client_count = await self._sync_connected_clients(group)
 
-        stream = group.start_stream()
-        play_start_us: int | None = server.clock.now_us() + int(
-            _INITIAL_PLAYBACK_DELAY_S * 1_000_000
-        )
-        play_end_us = play_start_us
-        streamed_count = 0
+        play_start_us = self._next_play_start_us
+        now_us = server.clock.now_us()
+        if play_start_us is None or play_start_us <= now_us:
+            play_start_us = now_us + int(_INITIAL_PLAYBACK_DELAY_S * 1_000_000)
+        if self._would_start_after_expiry(play_start_us, now_us, expires_at):
+            logger.info("Local Voice dropped stale audio before Sendspin scheduling")
+            return
 
         async def sync_clients() -> int:
             return await self._sync_connected_clients(group)
 
         try:
-            for wav_path in wav_paths:
-                next_play_start_us, clip_end_us, client_count = await _stream_wav(
-                    stream,
-                    wav_path,
-                    play_start_us=play_start_us,
-                    sync_clients=sync_clients,
-                )
-                play_start_us = next_play_start_us
-                if clip_end_us is not None:
-                    play_end_us = clip_end_us
-                    streamed_count += 1
-            await self._finish_stream(
-                server.clock,
-                play_end_us,
-                streamed_count,
-                client_count,
+            play_end_us, streamed_count, client_count = await self._queue_wav_paths(
+                stream,
+                wav_paths,
+                play_start_us=play_start_us,
+                initial_client_count=client_count,
                 sync_clients=sync_clients,
             )
+            client_count = max(client_count, await sync_clients())
+            if streamed_count:
+                logger.info(
+                    "Local Voice: queued %d WAV(s) to %d client(s)",
+                    streamed_count,
+                    client_count,
+                )
+                self._schedule_idle_stop(server.clock, group, play_end_us)
         except StreamStoppedError:
             logger.info("Local Voice: Sendspin stream stopped")
-        finally:
-            await group.stop()
+            self._stream = None
+            self._stream_group = None
+            self._next_play_start_us = None
+
+    async def _queue_wav_paths(
+        self,
+        stream: _PushStream,
+        wav_paths: list[Path],
+        *,
+        play_start_us: int,
+        initial_client_count: int,
+        sync_clients: Callable[[], Awaitable[int]],
+    ) -> tuple[int, int, int]:
+        play_end_us = play_start_us
+        streamed_count = 0
+        client_count = initial_client_count
+        next_play_start_us: int | None = play_start_us
+        for wav_path in wav_paths:
+            next_play_start_us, clip_end_us, client_count = await _stream_wav(
+                stream,
+                wav_path,
+                play_start_us=next_play_start_us,
+                sync_clients=sync_clients,
+            )
+            if clip_end_us is not None:
+                play_end_us = clip_end_us
+                self._next_play_start_us = clip_end_us
+                streamed_count += 1
+        return play_end_us, streamed_count, client_count
+
+    async def _ensure_stream(self) -> tuple[SendspinGroup | None, _PushStream | None]:
+        server = self._server
+        if server is None or not server.connected_clients:
+            return None, None
+        if (
+            self._stream_group is not None
+            and self._stream is not None
+            and not self._stream.is_stopped
+        ):
+            return self._stream_group, self._stream
+
+        group = server.connected_clients[0].group
+        await self._sync_connected_clients(group)
+        stream = group.start_stream()
+        self._stream_group = group
+        self._stream = stream
+        self._next_play_start_us = None
+        return group, stream
+
+    def _cancel_idle_stop(self) -> None:
+        task = self._idle_stop_task
+        if task is not None and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+        if self._idle_stop_task is task:
+            self._idle_stop_task = None
+
+    def _schedule_idle_stop(
+        self, clock: _SendspinClock, group: SendspinGroup, play_end_us: int
+    ) -> None:
+        self._cancel_idle_stop()
+        self._idle_stop_task = asyncio.create_task(
+            self._stop_stream_when_idle(clock, group, play_end_us)
+        )
+
+    @staticmethod
+    def _would_start_after_expiry(
+        play_start_us: int, now_us: int, expires_at: float | None
+    ) -> bool:
+        if expires_at is None:
+            return False
+        scheduled_delay_s = max(0.0, (play_start_us - now_us) / 1_000_000)
+        return time.monotonic() + scheduled_delay_s > expires_at
+
+    async def _stop_stream_when_idle(
+        self, clock: _SendspinClock, group: SendspinGroup, play_end_us: int
+    ) -> None:
+        try:
+            while True:
+                if self._stream_group is not group:
+                    return
+                await self._sync_connected_clients(group)
+                delay_s = (play_end_us - clock.now_us()) / 1_000_000
+                if delay_s <= 0:
+                    break
+                await asyncio.sleep(min(delay_s, _LATE_JOIN_SYNC_INTERVAL_S))
+            lock = self._stream_lock
+            if lock is None:
+                return
+            async with lock:
+                if (
+                    self._stream_group is group
+                    and self._next_play_start_us == play_end_us
+                ):
+                    await self._stop_stream_locked(stop_all_client_groups=False)
+        except asyncio.CancelledError:
+            pass
 
     async def _sync_connected_clients(self, group: SendspinGroup) -> int:
         server = self._server
@@ -263,25 +377,6 @@ class SendSpinServer:
                     client.client_id,
                 )
         return sum(1 for client in group.clients if client.is_connected)
-
-    async def _finish_stream(
-        self,
-        clock: _SendspinClock,
-        play_end_us: int,
-        streamed_count: int,
-        client_count: int,
-        *,
-        sync_clients: Callable[[], Awaitable[int]],
-    ) -> None:
-        if not streamed_count:
-            return
-        client_count = max(client_count, await sync_clients())
-        logger.info(
-            "Local Voice: streamed %d WAV(s) to %d client(s)",
-            streamed_count,
-            client_count,
-        )
-        await _sleep_until(clock, play_end_us, sync_clients=sync_clients)
 
 
 async def _stream_wav(
@@ -349,18 +444,3 @@ def _wav_total_duration(wav_paths: list[Path]) -> float:
         except Exception:
             logger.exception("Local Voice: cannot inspect WAV: %s", wav_path.name)
     return total
-
-
-async def _sleep_until(
-    clock: _SendspinClock,
-    timestamp_us: int,
-    *,
-    sync_clients: Callable[[], Awaitable[int]],
-) -> None:
-    """Sleep until a Sendspin clock timestamp has passed while catching late joiners."""
-    while True:
-        await sync_clients()
-        delay_s = (timestamp_us - clock.now_us()) / 1_000_000
-        if delay_s <= 0:
-            return
-        await asyncio.sleep(min(delay_s, _LATE_JOIN_SYNC_INTERVAL_S))

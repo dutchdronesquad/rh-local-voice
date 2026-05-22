@@ -11,15 +11,12 @@ NOISE_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_scale"
 NOISE_W_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_w_scale"
 TEST_PHRASE_OPTION = f"{PLUGIN_PREFIX}_test_phrase"
 
-# Audio profile toggles
-ENABLE_CROSSING_BEEPS_OPTION = f"{PLUGIN_PREFIX}_enable_crossing_beeps"
-
 # Sendspin server
 SENDSPIN_PORT = 8927
 
 DEFAULT_TEST_PHRASE = "Pilot Rocket finishes lap three in twelve point four seconds."
 DEFAULT_MODEL = "en_GB-alan-medium"
-DEFAULT_SPEED = "1.2"
+DEFAULT_SPEED = "1"
 DEFAULT_NOISE_SCALE = "0.667"
 DEFAULT_NOISE_W_SCALE = "0.8"
 

@@ -25,6 +25,22 @@ uv sync --all-groups
 cd player && npm install
 ```
 
+## RotorHazard Development Install
+
+When installing the plugin from a ZIP file, RotorHazard installs the manifest dependencies automatically. During local development, install those packages into the RotorHazard virtual environment yourself.
+
+With the RotorHazard venv active:
+
+```bash
+uv pip install piper-tts aiosendspin av numpy pillow
+```
+
+To update those packages in the RotorHazard venv:
+
+```bash
+uv pip install --upgrade piper-tts aiosendspin av numpy pillow
+```
+
 ## Pre-commit checks
 
 This repository uses the [prek] framework. All changes are linted and tested on each commit.

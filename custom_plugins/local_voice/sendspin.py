@@ -55,6 +55,14 @@ class _PushStream(Protocol):
         """Commit prepared audio and return the chunk start timestamp."""
         ...
 
+    def clear(self) -> None:
+        """Clear pending and buffered client audio."""
+        ...
+
+    def stop(self, *, keep_stream: bool = False) -> None:
+        """Stop the stream transport."""
+        ...
+
 
 class SendSpinServer:
     """Thin synchronous adapter around ``aiosendspin``.
@@ -189,11 +197,7 @@ class SendSpinServer:
             self._server = None
 
     async def _stop_stream(self) -> None:
-        lock = self._stream_lock
-        if lock is None:
-            return
-        async with lock:
-            await self._stop_stream_locked(stop_all_client_groups=True)
+        await self._interrupt_stream(clear_client_audio=True)
 
     async def _stop_stream_locked(self, *, stop_all_client_groups: bool) -> None:
         self._cancel_idle_stop()
@@ -211,6 +215,34 @@ class SendSpinServer:
                 await asyncio.gather(*stop_tasks, return_exceptions=True)
         elif group is not None:
             await group.stop()
+
+    async def _interrupt_stream(self, *, clear_client_audio: bool) -> None:
+        """Immediately interrupt active playback, even while audio is being queued."""
+        self._cancel_idle_stop()
+
+        server = self._server
+        stream = self._stream
+        group = self._stream_group
+        self._stream = None
+        self._stream_group = None
+        self._next_play_start_us = None
+
+        if clear_client_audio and stream is not None and not stream.is_stopped:
+            stream.clear()
+        if stream is not None and not stream.is_stopped:
+            stream.stop()
+
+        if server is None:
+            return
+
+        groups = {client.group for client in server.connected_clients}
+        if group is not None:
+            groups.add(group)
+        if groups:
+            await asyncio.gather(
+                *(group.stop() for group in groups),
+                return_exceptions=True,
+            )
 
     async def _append_to_stream(
         self, wav_paths: list[Path], expires_at: float | None

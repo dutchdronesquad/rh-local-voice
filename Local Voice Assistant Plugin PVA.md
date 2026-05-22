@@ -31,9 +31,9 @@ Consequence: **duplicate prevention is operational**, not automatic. The operato
 
 ---
 
-## Missing RH Features (wishlist for upstream)
+## Missing RH Features (Post-MVP wishlist for upstream)
 
-Things that would make the plugin significantly easier or more capable, but don't exist in RotorHazard today. Each item includes the ideal upstream fix and the current workaround.
+Things that would make the plugin significantly easier or more capable, but don't exist in RotorHazard today. These are explicitly **Post-MVP** items: they are not required for Phase 2 or Phase 3 completion. Each item includes the ideal upstream fix and the current workaround.
 
 ### Race clock countdown events
 
@@ -41,7 +41,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Add `Evt.RACE_CLOCK_WARNING` fired by the RH race thread at configurable thresholds (e.g. 60s, 30s, 10s remaining), with payload `{'seconds_remaining': int}`. This would let any plugin — not just audio plugins — react to race time milestones without reimplementing a parallel timer.
 
-**Status: deferred.** Not implemented in the plugin until RH provides a proper server-side event. Race clock callouts are skipped for now.
+**Status: Post-MVP / deferred.** Not implemented in the plugin until RH provides a proper server-side event. Race clock callouts are skipped for now.
 
 ---
 
@@ -51,7 +51,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Fire `Evt.RACE_ARM_TONE` from `RHRace.stage()` at each staging beep interval, with payload `{'tone_index': int, 'tones_remaining': int}`. This decouples the audio signal from the browser and lets server-side plugins (LED, audio, video) stay in sync with the actual staging sequence.
 
-**Status: deferred.** Not implemented in the plugin until RH fires server-side arm tone events. Staging beeps are skipped for now.
+**Status: Post-MVP / deferred.** Not implemented in the plugin until RH fires server-side arm tone events. Staging beeps are skipped for now.
 
 ---
 
@@ -61,7 +61,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Fire dedicated `Evt.RACE_TIED` and `Evt.RACE_OVERTIME` events from `check_win_condition()` in addition to the existing `Evt.RACE_WIN`. This mirrors the pattern already used for `Evt.RACE_PILOT_DONE` vs `Evt.RACE_WIN` and makes win outcome handling explicit for plugins.
 
-**Status: deferred.** Not implemented until RH fires dedicated events. Race Tied and Overtime callouts are skipped for now.
+**Status: Post-MVP / deferred.** Not implemented until RH fires dedicated events. Race Tied and Overtime callouts are skipped for now.
 
 ---
 
@@ -71,7 +71,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Route `emit_phonetic_leader()` through `emit_phonetic_text()` with a `domain='race_leader'` parameter, just like winner announcements use `domain='race_winner'`. This unifies all voice output behind a single filter point and makes `Flt.EMIT_PHONETIC_TEXT` truly the single interception point for audio plugins.
 
-**Status: deferred.** Not implemented until RH routes leader callouts through the unified `Flt.EMIT_PHONETIC_TEXT` filter. Race leader callouts are skipped for now.
+**Status: Post-MVP / deferred.** Not implemented until RH routes leader callouts through the unified `Flt.EMIT_PHONETIC_TEXT` filter. Race leader callouts are skipped for now.
 
 ---
 
@@ -293,6 +293,7 @@ RotorHazard server
 - Single async worker, FIFO queue.
 - Priority: Race Start / Winner / Interrupt > lap callouts > crossing beeps.
 - Callouts expire after ~5 seconds — a stale lap callout should never play.
+- Sendspin output appends queued WAVs to the active stream so normal lap callouts do not reset playback when another lap arrives.
 - All synthesis is async; never blocks RotorHazard event handling.
 
 ### Audio cache
@@ -321,12 +322,17 @@ The plugin cannot take over the built-in Audio Control tab. The operating model 
 **Built-in Audio Control → used only to silence browser clients**
 **Plugin Audio Profile → planned place to decide what the speakers announce**
 
-Plugin audio profile mirrors the familiar RH categories:
+MVP plugin audio profile mirrors the familiar RH categories that can be implemented with current RHAPI hooks:
 - Pilot callsign, lap number, lap time on/off
-- Race clock callouts
-- Winner / race leader callouts
+- Winner and pilot-finished callouts
 - Crossing enter/exit beeps
 - Voice volume, beep volume, speech speed, voice model
+
+Post-MVP profile additions:
+- Race clock callouts
+- Arm sequence countdown beeps
+- Race tied / overtime callouts
+- Race leader callouts
 
 ---
 
@@ -336,29 +342,37 @@ Implemented:
 - Enable plugin audio: on/off
 - Voice model selector: 12 models across English, Dutch, and German
 - Speech speed, noise scale, phoneme width noise
-- Crossing enter/exit beeps: on/off
 - Test phrase field and quick button
 - Play audio check quick button
 - Stop audio quick button
 - Clear TTS cache quick button
-- Duplicate prevention warnings for browser Voice Volume and browser beeps
+- Duplicate prevention warning for browser Voice Volume
+- Model download/load status surfaced to UI as notifications
 
-Planned / not implemented yet:
+MVP planned / not implemented yet:
+- Announcement options per component: Pilot Callsign, Pilot Lap Number, Pilot Lap Time — each selectable as Never / Always / Only on Non-Team/Non-Co-op Races. Use Python enums for option values.
+- Sendspin player target list or named player selection
+- Output volume and beep volume in the plugin panel
+- Pre-generate on heat load: on/off
+- Panel status display for TTS, Sendspin source, and connected players
+
+Known issues / deferred fixes:
+- Sendspin reconnect silence: after a client reconnects, no audio is heard until the next new stream; likely a stream state issue in `SendSpinServer`
+- Speed setting effectiveness: speed=2.0 produces little noticeable change; investigate whether `length_scale` is being applied correctly or whether medium-quality Piper models simply have a narrow effective range
+
+Post-MVP planned / not implemented yet:
 - TTS engine selector: piper-tts / Wyoming Piper / disabled
 - Wyoming Piper host and port
 - Sendspin mode: in-process / sidecar / disabled
 - Sendspin sidecar URL
-- Sendspin player target list or named player selection
-- Output volume and beep volume in the plugin panel
-- Pre-generate on heat load: on/off
-- Per-event audio profile toggles beyond crossing beeps
-- Panel status display for TTS, Sendspin source, and connected players
 
 ---
 
-## Implementation Phases
+## MVP Implementation Phases
 
-Each phase has a clear goal, a concrete checklist, and success criteria. A phase is done when every checkbox is ticked and the success criteria are met — not before.
+The MVP is Phase 1 through Phase 3: local Piper synthesis, race-callout queueing, and local Sendspin/browser playback. A phase is done when every checkbox is ticked and the success criteria are met — not before.
+
+Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper, mDNS, and broader polish are tracked separately under **Post-MVP Phases**.
 
 ---
 
@@ -395,9 +409,6 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 
 #### Status display
 - [x] Status logged via RotorHazard logger (visible in RH log panel)
-- [ ] ~~Show in plugin panel: model loaded / loading / error~~ — removed; RotorHazard input fields are not suitable for read-only display. Status available in logs.
-- [ ] ~~Show: last generated phrase + WAV file size + synthesis duration~~ — removed (same reason)
-- [ ] ~~Show: cache directory path + number of cached files~~ — removed (same reason)
 
 **Success criteria:**
 - [x] Clicking "Test phrase" generates a WAV in the cache directory with correct size and a valid WAV header
@@ -414,18 +425,8 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 #### Current callout inputs
 - [x] `Flt.EMIT_PHONETIC_DATA` → "Pilot [callsign], Lap [n]" + optional lap time
 - [x] `Flt.EMIT_PHONETIC_TEXT` → server-originated text callouts via TTS
-- [x] `Evt.CROSSING_ENTER` / `Evt.CROSSING_EXIT` → programmatically generated sine-tone beep WAV
+- [x] Winner callouts are covered and manually validated through `Flt.EMIT_PHONETIC_TEXT` (`domain='race_winner'`, `winner_flag=True` gets high priority)
 - [x] `Evt.HEAT_SET` → clear ephemeral lap-time WAVs for the selected model
-
-#### Direct race event listeners
-- [ ] `Evt.RACE_STAGE` → "Ready"
-- [ ] `Evt.RACE_START` → "Race start"
-- [ ] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
-- [ ] `Evt.RACE_WIN` → "Winner is [callsign]" (currently covered only if RotorHazard emits winner text through `Flt.EMIT_PHONETIC_TEXT`)
-- [ ] Race Tied / Overtime — deferred pending upstream `Evt.RACE_TIED` / `Evt.RACE_OVERTIME`
-- [ ] Race leader — deferred pending unified `Flt.EMIT_PHONETIC_TEXT` routing
-- [ ] `Evt.RACE_STOP` / `Evt.RACE_FINISH` → "Race stopped" / "Race finished"
-- [ ] `Evt.MESSAGE_STANDARD` / `Evt.MESSAGE_INTERRUPT` → spoken message text via TTS (currently covered only if RotorHazard emits message text through `Flt.EMIT_PHONETIC_TEXT`)
 
 #### Async audio queue
 - [x] Single `queue.PriorityQueue` with a dedicated daemon worker thread (`audio_queue.py`)
@@ -433,16 +434,13 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 - [x] Priority levels: `HIGH` (race start / winner / interrupt) > `NORMAL` (lap callout) > `LOW` (beep)
 - [x] Expiry: drop jobs where `time.monotonic() > expires_at` (default: 5 seconds)
 - [x] Single worker draining the queue in priority order; expired jobs dropped and logged
-- [x] Worker plays one item at a time; previous item must finish before next starts
+- [x] Sendspin appends queued WAVs to the active stream; normal lap callouts do not intentionally stop/reset current playback
 
 #### Audio profile settings
 - [ ] Pilot callsign: on/off — not separately configurable yet
 - [ ] Lap number: on/off — not separately configurable yet
 - [ ] Lap time: on/off — not separately configurable yet
-- [ ] Race clock callouts: on/off — deferred pending upstream `Evt.RACE_CLOCK_WARNING`
 - [ ] Winner callout: on/off — not separately configurable yet
-- [ ] Race tied / overtime callout: on/off — deferred pending upstream fix
-- [ ] Race leader callout: on/off — deferred pending upstream fix
 - [ ] Pilot finished callout: on/off — not separately configurable yet
 - [x] Crossing enter/exit beeps: on/off
 - [x] All implemented toggles exposed in plugin settings panel
@@ -451,7 +449,6 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 - [x] Hook into `Evt.HEAT_SET`
 - [x] Clear ephemeral lap-time WAV files when a heat loads
 - [ ] Generate WAVs for all pilot callsigns in the loaded heat
-- [ ] Generate WAVs for lap numbers 1–20
 - [ ] Generate WAVs for all fixed phrases
 - [ ] Pre-caching runs in a background thread; does not block heat load or event handling
 - [ ] Log how many files were generated and how long it took
@@ -465,7 +462,7 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 - [x] No race event is delayed or dropped because of plugin audio work
 
 **Success criteria:**
-- [ ] A full simulated race (stage → start → laps → winner → stop) produces the correct callouts in the log
+- [x] A full simulated race (stage → start → laps → winner → stop) produces the correct callouts in the log
 - [ ] Pilot names and lap numbers are pre-generated when a heat loads; generation time logged
 - [x] Piper crash mid-race does not affect RotorHazard timing or results
 - [x] Expired callouts are dropped and logged, never played late
@@ -481,8 +478,6 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 - [x] Sendspin source/server starts when plugin initializes
 - [x] Sendspin source accepts WAV input from the plugin audio queue worker
 - [x] In-process mode: plugin drives `aiosendspin` directly (Python 3.12+)
-- [ ] Sidecar mode: plugin sends WAV jobs to local sidecar via HTTP/WS (see Phase 4)
-- [ ] Plugin setting: Sendspin mode (in-process / sidecar / disabled)
 
 #### Player target configuration
 - [ ] Plugin setting: Sendspin player target list (one or more entries)
@@ -499,6 +494,7 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 #### Latency validation
 - [ ] Log timestamps per job: event received → WAV ready → Sendspin submitted → (if measurable) playback confirmed
 - [ ] Run test race on actual hardware (Pi → Sendspin → NUC player)
+- [ ] Validate back-to-back lap callouts on actual hardware/browser player: no audible stream reset when a new lap arrives during playback
 - [ ] Document measured latency in this document under a "Validated Latency" subsection
 - [ ] If latency > 1 second for cached phrases: investigate persistent stream / keep-alive connection
 - [ ] Decision recorded: stream-per-WAV vs persistent stream
@@ -524,13 +520,30 @@ Each phase has a clear goal, a concrete checklist, and success criteria. A phase
 
 ---
 
-### Phase 4 — Sidecar, Cloud, and QR Code
+## Post-MVP Phases
 
-**Goal:** Sendspin server can run as an independent sidecar service (for Python version compatibility) and optionally in the cloud for spectator/pilot phone feeds.
+Post-MVP work starts after the local MVP is race-day usable: full local race callouts, caching/pre-generation, in-process Sendspin, browser player, and measured local latency. This section includes upstream-dependent RotorHazard features and deployment modes that are useful but not required for the first stable release.
+
+---
+
+### Phase 4 — Deferred RH Features, Sidecar, Cloud, and QR Code
+
+**Goal:** Track RHAPI-dependent callouts outside the MVP, and let Sendspin run as an independent sidecar service or cloud path for spectator/pilot phone feeds.
+
+#### Deferred RH / RHAPI-dependent callouts
+- [ ] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
+- [ ] Race clock callouts via upstream `Evt.RACE_CLOCK_WARNING`
+- [ ] Arm sequence countdown beeps via upstream `Evt.RACE_ARM_TONE`
+- [ ] Race tied / overtime via upstream `Evt.RACE_TIED` / `Evt.RACE_OVERTIME`
+- [ ] Race leader via `Flt.EMIT_PHONETIC_LEADER` (payload: `pilot`, `callsign`; already hookable today — deferred to keep MVP scope small)
+- [ ] Audio profile toggles for race clock, arm sequence, race tied/overtime, and race leader callouts
+- [ ] Split pass callouts via `Flt.EMIT_PHONETIC_SPLIT` (payload: `pilot_name`, `split_id`, `split_time`, `split_speed`; only relevant on tracks with split sensors)
 
 #### Sendspin sidecar service
 - [ ] Provide `local-voice-sendspin.service` systemd unit file with the plugin
+- [ ] Plugin setting: Sendspin mode (in-process / sidecar / disabled)
 - [ ] Plugin setting: sidecar URL (default: `http://localhost:8766`)
+- [ ] Sidecar mode: plugin sends WAV jobs to local sidecar via HTTP/WS
 - [ ] Plugin health check pings sidecar status endpoint
 - [ ] Sidecar mode works without Python 3.12+ in the RotorHazard virtualenv
 - [ ] Document sidecar installation steps (pip install in separate venv, enable service)

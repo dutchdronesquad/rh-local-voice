@@ -38,13 +38,15 @@
   and streams playback to one or more Sendspin clients over the local network.
 </p>
 
-![SCREENSHOT](https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/.github/assets/screenshot.png)
+<p align="center">
+  <img alt="Local Voice showcase" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/.github/assets/screenshot.png" width="800">
+</p>
 
 # Local Voice
 
 Server-side voice callouts for the [RotorHazard] timing platform, powered by [Piper TTS]. Audio is generated locally on the RotorHazard server and streamed to connected clients over the network using the [Sendspin] protocol — no cloud services required.
 
-## Features
+## What you can do
 
 - 🎙️ **Local TTS**: Generates voice callouts with [Piper TTS] entirely on-device.
 - 📡 **Sendspin streaming**: Streams PCM audio to one or more clients over WebSocket for synchronised multi-room playback.

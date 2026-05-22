@@ -1,16 +1,22 @@
 [project]
 name = "local-voice"
 version = "0.1.0"
-description = "Add your description here"
+description = "RotorHazard plugin for fully local server-side voice callout WAV generation"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "aiosendspin>=5.2.0",
+    "av>=17.0.1",
+    "numpy>=2.4.5",
+    "pillow>=12.2.0",
+    "piper-tts>=1.4.2",
+]
 
 [dependency-groups]
 dev = [
   "pre-commit-hooks==6.0.0",
-  "prek==0.4.0",
-  "ruff==0.15.13",
+  "prek==0.4.1",
+  "ruff==0.15.14",
 ]
 
 [tool.ruff]

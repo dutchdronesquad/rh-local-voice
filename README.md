@@ -1,73 +1,118 @@
-<!-- PLUGIN BADGES -->
-![Project Stage][project-stage-shield]
-![Project Maintenance][maintenance-shield]
-[![License][license-shield]](LICENSE)
+<p align="center">
+  <picture>
+    <img alt="Local Voice" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/custom_plugins/local_voice/player/favicon.svg" width="96">
+  </picture>
+</p>
 
-[![RHFest][rhfest-shield]][rhfest-url]
+<p align="center">
+  <strong>Local server-side voice callouts for RotorHazard, powered by Piper TTS and Sendspin.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/dutchdronesquad/rh-local-voice/actions/workflows/linting.yaml"><img
+    src="https://github.com/dutchdronesquad/rh-local-voice/actions/workflows/linting.yaml/badge.svg"
+    alt="Linting"
+  /></a>
+  <a href="https://github.com/dutchdronesquad/rh-local-voice/actions/workflows/rhfest.yaml"><img
+    src="https://github.com/dutchdronesquad/rh-local-voice/actions/workflows/rhfest.yaml/badge.svg"
+    alt="RHFest"
+  /></a>
+  <a href="LICENSE"><img
+    src="https://img.shields.io/badge/license-MIT-blue"
+    alt="License"
+  /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/dutchdronesquad/rh-local-voice/releases/latest"><strong>Download</strong></a>
+  &middot;
+  <a href="docs/usage.md"><strong>Usage Guide</strong></a>
+  &middot;
+  <a href="https://github.com/sendspin"><strong>Sendspin</strong></a>
+  &middot;
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+</p>
+
+<p align="center">
+  Local Voice generates RotorHazard announcements on the timing server, caches reusable WAV files,
+  and streams playback to one or more Sendspin clients over the local network.
+</p>
+
+<p align="center">
+  <img alt="Local Voice showcase" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/.github/assets/screenshot.png" width="800">
+</p>
 
 # Local Voice
 
-This is a basic template repository for creating a plugin for the RotorHazard timing platform. It is intended to be used as a starting point for creating a new plugin.
+Server-side voice callouts for the [RotorHazard] timing platform, powered by [Piper TTS]. Audio is generated locally on the RotorHazard server and streamed to connected clients over the network using the [Sendspin] protocol — no cloud services required.
 
-## Features
+## What you can do
 
-- **Pre-commit checks**: to run checks and tests on each commit.
-- **Python virtual environment**: uses [uv] to manage the python virtual environment and dependencies.
-- **RHFest validation**: GitHub action to validate the plugin manifest file against the RHFest schema.
-- **Renovate**: uses [Renovate](https://docs.renovatebot.com/) to keep dependencies up to date.
+- 🎙️ **Local TTS**: Generates voice callouts with [Piper TTS] entirely on-device.
+- 📡 **Sendspin streaming**: Streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
+- 🌐 **Browser player**: A built-in web player accessible at `/player`.
+- 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
+- ⚡ **Smart caching**: Reusable pilot/lap phrases are cached separately; ephemeral lap-time files are discarded after each heat.
 
-## Development
+## Requirements
 
-This Python project relies on [uv] as its dependency manager, providing comprehensive management and control over project dependencies.
+- [RotorHazard] with RHAPI plugin support.
+- Python 3.12 or newer.
+- Network access from playback clients to the RotorHazard server.
+- A browser on the playback device. The plugin serves its own Sendspin player at `/player`.
 
-You need the following tools to get started:
+## Quick Start
 
-- [uv] - A python virtual environment/package manager
-- [Python] 3.12 (or higher) - The programming language
+1. Download the plugin ZIP from the latest GitHub release.
+2. In RotorHazard, open the plugin manager and upload the ZIP file.
+3. Restart RotorHazard if requested.
+4. Open the RotorHazard settings page and enable **Local Voice**.
+5. Open `/player` from the RotorHazard host on the playback device.
+6. Use **Generate test phrase** or **Play audio check** to verify playback.
 
-### Installation
+The first generated phrase for a voice model downloads the Piper model into the RotorHazard data cache. That can take a moment depending on the server and network connection.
 
-1. Clone the repository
-2. Install all dependencies with UV. This will create a virtual environment and install all dependencies
+## Documentation
 
-```bash
-uv sync --all-groups
-```
+- [Usage Guide](docs/usage.md): setup, settings, browser player, cache layout, operational notes, and troubleshooting.
+- [Changelog](CHANGELOG.md): release history.
+- [Contributing](CONTRIBUTING.md): development setup and contribution guidelines.
 
-### Prek check
+## Sponsors
 
-As this repository uses the [prek][prek] framework, all changes are linted and tested with each commit.
+If Local Voice helps your club, event, or race-day workflow, you can help fund continued development and maintenance.
 
-To install the prek check, run:
+- Support the project through [GitHub Sponsors](https://github.com/sponsors/klaasnicolaas)
+- Send a one-off contribution through [Ko-fi](https://ko-fi.com/klaasnicolaas)
 
-```bash
-uv run prek install
-```
+## Contributing
 
-To run all checks and tests manually, use the following command:
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and development guidelines.
 
-```bash
-uv run prek run --all-files
-```
+<a href="https://github.com/dutchdronesquad/rh-local-voice/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=dutchdronesquad/rh-local-voice" alt="Contributors" />
+</a>
 
-To manual run only on the staged files, use the following command:
+## Credits
 
-```bash
-uv run prek run
-```
+The bundled audio check track is:
+
+- Music track: Foreign by Moavii
+- Source: <https://freetouse.com/music>
+- Free Music Without Copyright (Safe)
 
 ## License
 
 Distributed under the **MIT** License. See [`LICENSE`](LICENSE) for more information.
 
-<!-- LINK -->
-[uv]: https://docs.astral.sh/uv/
-[Python]: https://www.python.org/
-[prek]: https://prek.j178.dev/
+<!-- LINKS -->
+[RotorHazard]: https://github.com/RotorHazard/RotorHazard
+[Piper TTS]: https://github.com/OHF-Voice/piper1-gpl
+[Sendspin]: https://github.com/sendspin
+[WindowsSpin]: https://github.com/sendspin/windowsspin
 
 [license-shield]: https://img.shields.io/github/license/dutchdronesquad/rh-local-voice.svg
 [maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
 [project-stage-shield]: https://img.shields.io/badge/project%20stage-experimental-yellow.svg
 [rhfest-shield]: https://github.com/dutchdronesquad/rh-local-voice/actions/workflows/rhfest.yaml/badge.svg
 [rhfest-url]: https://github.com/dutchdronesquad/rh-local-voice/actions/workflows/rhfest.yaml
-[rhcp-shield]: https://img.shields.io/badge/RotorHazard-Community_Plugins-orange.svg

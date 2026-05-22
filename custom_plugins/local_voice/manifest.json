@@ -1,10 +1,17 @@
 {
   "domain": "local_voice",
   "name": "Local Voice",
-  "author": "RotorHazard",
+  "author": "Dutch Drone Squad",
   "license": "MIT",
-  "description": "A template plugin for creating custom plugins for the RotorHazard project.",
+  "description": "Generate RotorHazard voice callout WAV files locally with Piper TTS.",
   "documentation_uri": "https://github.com/dutchdronesquad/rh-local-voice",
   "required_rhapi_version": "1.0",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "dependencies": [
+    "piper-tts>=1.4.2",
+    "aiosendspin>=5.3.0",
+    "av>=17.0.1",
+    "numpy>=2.4.6",
+    "pillow>=12.2.0"
+  ]
 }

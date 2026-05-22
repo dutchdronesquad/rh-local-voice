@@ -9,6 +9,17 @@
     "automerge": true
   },
   "commitMessagePrefix": "⬆️",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^custom_plugins/local_voice/manifest\\.json$/"],
+      "matchStrings": [
+        "\"(?<depName>[A-Za-z0-9_.-]+)(?:==|!=|<=|>=|~=|<|>)\\s*(?<currentValue>[^\"\\s,]+)\""
+      ],
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "pep440"
+    }
+  ],
   "packageRules": [
     {
       "matchManagers": ["pep621"],

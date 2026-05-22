@@ -26,7 +26,7 @@
 <p align="center">
   <a href="https://github.com/dutchdronesquad/rh-local-voice/releases/latest"><strong>Download</strong></a>
   &middot;
-  <a href="https://github.com/RotorHazard/RotorHazard"><strong>RotorHazard</strong></a>
+  <a href="docs/usage.md"><strong>Usage Guide</strong></a>
   &middot;
   <a href="https://github.com/sendspin"><strong>Sendspin</strong></a>
   &middot;
@@ -49,59 +49,34 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 ## What you can do
 
 - 🎙️ **Local TTS**: Generates voice callouts with [Piper TTS] entirely on-device.
-- 📡 **Sendspin streaming**: Streams PCM audio to one or more clients over WebSocket for synchronised multi-room playback.
-- 🌐 **Browser player**: A built-in web player accessible at `/player`, compatible with any Sendspin client (e.g. [WindowsSpin]).
+- 📡 **Sendspin streaming**: Streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
+- 🌐 **Browser player**: A built-in web player accessible at `/player`.
 - 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
-- ⚡ **Smart caching**: Synthesised WAV files are cached by content hash; ephemeral lap-time files are discarded after each heat.
-
-## How it works
-
-Local Voice hooks into RotorHazard's phonetic callout events. When a race event needs speech, the plugin synthesises the phrase with Piper, stores the WAV in the RotorHazard data cache, and queues it for Sendspin playback.
-
-Lap callouts are split into reusable and time-sensitive parts. Pilot names and lap numbers can be cached across heats, while lap-time audio is written to a temporary cache and cleared when the heat changes.
+- ⚡ **Smart caching**: Reusable pilot/lap phrases are cached separately; ephemeral lap-time files are discarded after each heat.
 
 ## Requirements
 
 - [RotorHazard] with RHAPI plugin support.
 - Python 3.12 or newer.
 - Network access from playback clients to the RotorHazard server.
-- A Sendspin playback client, either the built-in browser player at `/player` or another compatible client such as [WindowsSpin].
+- A browser on the playback device. The plugin serves its own Sendspin player at `/player`.
 
-## Installation
+## Quick Start
 
 1. Download the plugin ZIP from the latest GitHub release.
 2. In RotorHazard, open the plugin manager and upload the ZIP file.
 3. Restart RotorHazard if requested.
 4. Open the RotorHazard settings page and enable **Local Voice**.
+5. Open `/player` from the RotorHazard host on the playback device.
+6. Use **Generate test phrase** or **Play audio check** to verify playback.
 
 The first generated phrase for a voice model downloads the Piper model into the RotorHazard data cache. That can take a moment depending on the server and network connection.
 
-## Usage
+## Documentation
 
-1. In RotorHazard, open **Settings** → **Local Voice**.
-2. Enable **Plugin audio**.
-3. Choose a voice model and adjust the speech parameters if needed.
-4. Open `/player` from the same RotorHazard host in a browser tab, for example `http://localhost:5000/player`.
-5. Set normal RotorHazard browser voice volume to `0` on clients that should only use Local Voice audio.
-6. Use **Generate test phrase** or **Play audio check** to verify playback.
-
-The Sendspin server listens on port `8927`. If another machine is used for playback, make sure that port is reachable on the local network.
-
-## Settings
-
-- **Enable plugin audio**: Turns Local Voice callout generation on or off.
-- **Voice model**: Selects the Piper voice model. Models are downloaded once and reused.
-- **Speech speed**: Controls speaking rate. `1.0` is Piper default; lower is slower, higher is faster.
-- **Noise scale**: Controls voice variation. Lower values are more monotone; higher values are more expressive.
-- **Phoneme width noise**: Controls duration variation between phonemes.
-- **Crossing enter / exit beeps**: Adds short local beeps for crossing events.
-- **Test phrase**: Phrase used by the **Generate test phrase** button.
-
-## Browser Player
-
-The built-in browser player is served by the plugin at `/player`. It connects to Sendspin over WebSocket and plays the streamed PCM audio in the browser.
-
-During local testing, Safari on macOS produced the smoothest browser playback. Chrome can work well too, but browser extensions may add console noise or small timing interruptions. If playback jitter appears in Chrome, test once in an incognito window with extensions disabled before debugging the server.
+- [Usage Guide](docs/usage.md): setup, settings, browser player, cache layout, operational notes, and troubleshooting.
+- [Changelog](CHANGELOG.md): release history.
+- [Contributing](CONTRIBUTING.md): development setup and contribution guidelines.
 
 ## Sponsors
 

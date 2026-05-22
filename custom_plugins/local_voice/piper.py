@@ -81,8 +81,9 @@ class PiperSynthesizer:
     ) -> SynthesisResult | None:
         """Return a cached WAV for text, synthesizing it with Piper if needed.
 
-        When *subdir* is given the WAV is written to ``{model_dir}/{subdir}/``
-        instead of directly under the model directory.
+        When *subdir* is given the WAV is written to
+        ``{tts_dir}/{model_name}/{subdir}/`` instead of directly under the
+        model directory.
         """
         normalized_text = self.normalize_text(text)
         if not normalized_text:
@@ -149,6 +150,10 @@ class PiperSynthesizer:
     def test_dir_for_model(self, model_name: str) -> Path:
         """Return the test-phrase subdirectory for a specific model."""
         return self._tts_dir / model_name / "test"
+
+    def precache_dir_for_model(self, model_name: str) -> Path:
+        """Return the pre-generated lap phrase subdirectory for a specific model."""
+        return self._tts_dir / model_name / "precache"
 
     def cache_status_text(self) -> str:
         """Return cache directory and total file-count status."""

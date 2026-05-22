@@ -427,12 +427,14 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 - [x] `Flt.EMIT_PHONETIC_TEXT` → server-originated text callouts via TTS
 - [x] Winner callouts are covered and manually validated through `Flt.EMIT_PHONETIC_TEXT` (`domain='race_winner'`, `winner_flag=True` gets high priority)
 - [x] `Evt.HEAT_SET` → clear ephemeral lap-time WAVs + pre-cache pilot phrases for the loaded heat
+- [x] `Evt.DATABASE_RESET` → clear event-specific `tmp/` and `precache/` WAVs after Archive/New Event or Clear Data Only
 
 #### Async audio queue
 - [x] Single `queue.PriorityQueue` with a dedicated daemon worker thread (`audio_queue.py`)
 - [x] `AudioJob` dataclass: `text`, `wav_paths`, `priority`, `expires_at`
 - [x] Priority levels: `HIGH` (race start / winner / interrupt) > `NORMAL` (lap callout) > `LOW` (beep)
 - [x] Expiry: drop jobs where `time.monotonic() > expires_at` (default: 5 seconds)
+- [x] Lap callouts use a 10-second expiry to tolerate multiple pilots crossing together while still dropping stale audio
 - [x] Single worker draining the queue in priority order; expired jobs dropped and logged
 - [x] Sendspin appends queued WAVs to the active stream; normal lap callouts do not intentionally stop/reset current playback
 
@@ -442,7 +444,7 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 #### Heat-load cache handling
 - [x] Hook into `Evt.HEAT_SET`
 - [x] Clear ephemeral lap-time WAV files when a heat loads
-- [x] Pre-synthesize "[name], Lap [n]" for all pilots in the loaded heat (n=1–20)
+- [x] Pre-synthesize "[name], Lap [n]" for all pilots in the loaded heat (n=1–15)
 - [x] Pre-caching runs in the synth thread pool; does not block heat load or event handling
 - [x] Log how many new WAVs were generated and how long it took
 

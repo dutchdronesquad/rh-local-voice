@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Default expiry time for a job
 DEFAULT_EXPIRY_SEC = 5.0
 
 

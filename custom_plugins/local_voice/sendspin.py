@@ -265,7 +265,7 @@ class SendSpinServer:
                     streamed_count,
                     client_count,
                 )
-                self._schedule_idle_stop(server.clock, play_end_us)
+                self._schedule_idle_stop(server.clock, group, play_end_us)
         except StreamStoppedError:
             logger.info("Local Voice: Sendspin stream stopped")
             self._stream = None
@@ -324,10 +324,12 @@ class SendSpinServer:
         if self._idle_stop_task is task:
             self._idle_stop_task = None
 
-    def _schedule_idle_stop(self, clock: _SendspinClock, play_end_us: int) -> None:
+    def _schedule_idle_stop(
+        self, clock: _SendspinClock, group: SendspinGroup, play_end_us: int
+    ) -> None:
         self._cancel_idle_stop()
         self._idle_stop_task = asyncio.create_task(
-            self._stop_stream_when_idle(clock, play_end_us)
+            self._stop_stream_when_idle(clock, group, play_end_us)
         )
 
     @staticmethod
@@ -340,10 +342,13 @@ class SendSpinServer:
         return time.monotonic() + scheduled_delay_s > expires_at
 
     async def _stop_stream_when_idle(
-        self, clock: _SendspinClock, play_end_us: int
+        self, clock: _SendspinClock, group: SendspinGroup, play_end_us: int
     ) -> None:
         try:
             while True:
+                if self._stream_group is not group:
+                    return
+                await self._sync_connected_clients(group)
                 delay_s = (play_end_us - clock.now_us()) / 1_000_000
                 if delay_s <= 0:
                     break
@@ -352,7 +357,10 @@ class SendSpinServer:
             if lock is None:
                 return
             async with lock:
-                if self._next_play_start_us == play_end_us:
+                if (
+                    self._stream_group is group
+                    and self._next_play_start_us == play_end_us
+                ):
                     await self._stop_stream_locked(stop_all_client_groups=False)
         except asyncio.CancelledError:
             pass

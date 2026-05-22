@@ -11,9 +11,6 @@ NOISE_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_scale"
 NOISE_W_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_w_scale"
 TEST_PHRASE_OPTION = f"{PLUGIN_PREFIX}_test_phrase"
 
-# Audio profile toggles
-ENABLE_CROSSING_BEEPS_OPTION = f"{PLUGIN_PREFIX}_enable_crossing_beeps"
-
 # Sendspin server
 SENDSPIN_PORT = 8927
 

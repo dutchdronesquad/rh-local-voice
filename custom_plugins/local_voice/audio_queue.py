@@ -40,12 +40,12 @@ class AudioJob:
 class AudioQueue:
     """Priority queue with a single daemon worker thread.
 
-    The worker drains jobs in priority order, dropping any that have
-    exceeded their expiry time. Each ready job is handed to *player*,
-    which blocks until playback finishes before the next job is picked up.
+    The worker drains jobs in priority order, dropping any that have exceeded
+    their expiry time. Each ready job is handed to *player* with its deadline
+    so the output backend can avoid scheduling stale audio.
     """
 
-    def __init__(self, player: Callable[[list[Path]], None]) -> None:
+    def __init__(self, player: Callable[[list[Path], float], None]) -> None:
         """Start the background worker thread."""
         self._player = player
         self._queue: queue.PriorityQueue[AudioJob] = queue.PriorityQueue()
@@ -95,7 +95,7 @@ class AudioQueue:
                     job.priority.name,
                     ", ".join(p.name for p in job.wav_paths),
                 )
-                self._player(job.wav_paths)
+                self._player(job.wav_paths, job.expires_at)
             except Exception:
                 logger.exception("Local Voice worker error for '%s'", job.text)
             finally:

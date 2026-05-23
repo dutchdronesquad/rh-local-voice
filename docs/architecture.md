@@ -10,6 +10,8 @@ RH event thread
   ├─ Flt.EMIT_PHONETIC_DATA  ──► ThreadPoolExecutor (_synth_pool)
   ├─ Flt.EMIT_PHONETIC_TEXT  ──►   │
   ├─ Evt.HEAT_SET            ──►   │
+  ├─ Evt.RACE_STAGE_TONE     ──► AudioQueue
+  ├─ Evt.RACE_START          ──► AudioQueue
   └─ Evt.RACE_SCHEDULE       ──► ScheduleCalloutManager ──► _synth_pool
                                       │
                                       ▼
@@ -70,7 +72,7 @@ Cache keys are `sha1(text.lower())_{speed}_{noise}_{noise_w}` so switching synth
 
 | Priority | Used for |
 |----------|----------|
-| HIGH     | Winner announcement, manual test phrase, scheduled-race countdowns |
+| HIGH     | Winner announcement, manual test phrase, scheduled-race countdowns, staging tones, race-start buzzer |
 | NORMAL   | Lap callouts |
 | LOW      | Reserved |
 
@@ -94,6 +96,7 @@ can interact with it without knowing about asyncio.
 
 Key design points:
 - Consecutive `play()` calls append to the active stream rather than restarting it, so back-to-back lap callouts play without audible resets or gaps.
+- Jobs may provide a `play_at` monotonic timestamp for time-sensitive static sounds, such as staging tones from `Evt.RACE_STAGE_TONE`.
 - Late-joining browser clients are synced into the active stream group so they receive audio already in progress.
 - The stream is torn down automatically after the last queued clip finishes playing (idle-stop task).
 

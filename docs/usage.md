@@ -9,7 +9,7 @@ This guide covers day-to-day setup and operation for Local Voice.
 3. Choose a voice model and adjust the speech parameters if needed.
 4. Install and start the Sendspin service on the RotorHazard host.
 5. Open `/player` from the RotorHazard host in a browser tab on the playback device, for example `http://rotorhazard.local:5000/player`.
-6. Set normal RotorHazard browser Voice Volume to `0` on clients that should only use Local Voice audio.
+6. Set normal RotorHazard browser Voice Volume and Tone Volume to `0` on clients that should only use Local Voice audio.
 7. Use **Generate test phrase** or **Play audio check** to verify playback.
 
 The Sendspin service receives plugin playback jobs on `127.0.0.1:8766` and
@@ -93,15 +93,16 @@ Cache behavior:
 
 ## Operational Notes
 
-- Local Voice does not disable RotorHazard's built-in browser speech. Set Voice Volume to `0` on regular RotorHazard browser clients to avoid duplicate callouts.
+- Local Voice does not disable RotorHazard's built-in browser speech or tone playback. Set Voice Volume and Tone Volume to `0` on regular RotorHazard browser clients to avoid duplicate callouts and staging/start sounds.
 - The first use of a voice model requires internet access to download model files. Racing can run offline after the selected model has been cached.
 - Callouts are generated server-side; browser-specific RotorHazard voice settings do not affect Local Voice output.
+- Staging tones and the race-start buzzer are static WAV files played through Sendspin. They require a RotorHazard build that provides `Evt.RACE_STAGE_TONE`.
 - If no Sendspin browser player is connected, generated audio is dropped and logged.
 
 ## Troubleshooting
 
 - **No audio in the browser player**: confirm that `/player` is open, connected to the correct host, and that port `8927` is reachable from the playback device.
 - **Service is not reachable**: confirm `rh-sendspin-service` is running and `GET /health` works on `http://127.0.0.1:8766`.
-- **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in all regular RotorHazard browser clients.
+- **Duplicate voice callouts or tones**: set RotorHazard Voice Volume and Tone Volume to `0` in all regular RotorHazard browser clients.
 - **First phrase is slow**: the selected Piper model may be downloading or loading. Watch the RotorHazard log for Local Voice status messages.
 - **Browser playback stutters**: try Safari or a Chrome incognito window with extensions disabled, then validate on the actual race network.

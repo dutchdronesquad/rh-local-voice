@@ -53,13 +53,14 @@ Service endpoints:
 Important behavior:
 
 - Consecutive play calls append to the active stream instead of restarting it.
+- Job volume is applied to PCM data at playback time, leaving cached WAV files at full generated level.
 - Jobs can provide `play_at` for scheduled static sounds.
 - Late-joining browser clients are added to the active stream group.
 - The stream is stopped after the queued audio has finished.
 
 ## Audio Queue and Priority
 
-Both the plugin and the service use a single worker queue to keep event callbacks and HTTP requests short. Jobs carry a priority and expiry deadline.
+Both the plugin and the service use a single worker queue to keep event callbacks and HTTP requests short. Jobs carry a priority, expiry deadline, and playback volume.
 
 | Priority | Used for |
 |----------|----------|

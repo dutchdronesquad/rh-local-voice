@@ -52,7 +52,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 - 📡 **Sendspin service playback**: Sends generated WAV files to a service that streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
 - 🌐 **Browser player**: A built-in RotorHazard plugin player at `/player` that connects to the Sendspin service.
 - 🐳 **Container**: A Docker image is available for standalone service deployments, including the browser player at `/`.
-- 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
+- 🎛️ **Configurable voice**: Adjustable voice volume, speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
 - ⚡ **Smart caching**: Reusable pilot-name and lap-number segments are cached separately; use **Rebuild pre-cache** after startup or voice model/settings changes to prepare them ahead of racing.
 
 ## Requirements
@@ -76,6 +76,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 9. Use **Generate test phrase** or **Play audio check** to verify playback.
 
 The first generated phrase for a voice model downloads the Piper model into the RotorHazard data cache. That can take a moment depending on the server and network connection.
+The **Voice volume** setting is applied during playback and does not require rebuilding the pre-cache.
 
 ## Documentation
 

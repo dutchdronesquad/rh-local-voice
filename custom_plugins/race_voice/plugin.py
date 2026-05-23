@@ -24,6 +24,7 @@ from .const import (
     DEFAULT_SENDSPIN_SERVICE_URL,
     DEFAULT_SPEED,
     DEFAULT_TEST_PHRASE,
+    DEFAULT_VOICE_VOLUME,
     ENABLE_OPTION,
     NOISE_SCALE_OPTION,
     NOISE_W_SCALE_OPTION,
@@ -33,6 +34,7 @@ from .const import (
     TEST_PHRASE_OPTION,
     VOICE_MODEL_OPTION,
     VOICE_MODELS,
+    VOICE_VOLUME_OPTION,
 )
 from .output import SendspinServiceClient
 from .piper import PiperSynthesizer, SynthesisParams, SynthesisResult
@@ -200,6 +202,7 @@ class RaceVoicePlugin:
                 wav_paths=wav_paths,
                 priority=Priority.NORMAL,
                 expiry_sec=max(0.0, expires_at - time.monotonic()),
+                volume=self._voice_volume(),
             )
 
     def _on_phonetic_text(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -288,7 +291,10 @@ class RaceVoicePlugin:
             self._rhapi.ui.message_alert("Race Voice test failed - check logs")
             return
         self._audio_queue.enqueue(
-            text=text, wav_paths=[wav_path], priority=Priority.HIGH
+            text=text,
+            wav_paths=[wav_path],
+            priority=Priority.HIGH,
+            volume=self._voice_volume(),
         )
         self._rhapi.ui.message_notify(f"Race Voice test phrase queued: {wav_path.name}")
 
@@ -375,6 +381,7 @@ class RaceVoicePlugin:
                 wav_paths=[wav_path],
                 priority=priority,
                 expiry_sec=max(0.0, expires_at - time.monotonic()),
+                volume=self._voice_volume(),
             )
 
     def _record_generation(self, result: SynthesisResult) -> None:
@@ -449,6 +456,16 @@ class RaceVoicePlugin:
 
     def _enabled(self) -> bool:
         return self._flag(ENABLE_OPTION, default=False)
+
+    def _voice_volume(self) -> float:
+        return self._volume_option(VOICE_VOLUME_OPTION, DEFAULT_VOICE_VOLUME)
+
+    def _volume_option(self, option: str, default: str) -> float:
+        value = self._option(option, default=default)
+        try:
+            return max(0.0, min(1.0, float(value) / 100.0))
+        except (TypeError, ValueError):
+            return max(0.0, min(1.0, float(default) / 100.0))
 
     def _flag(self, option: str, *, default: bool = True) -> bool:
         value = self._option(option, default=default)

@@ -52,7 +52,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 - 📡 **Sendspin streaming**: Streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
 - 🌐 **Browser player**: A built-in web player accessible at `/player`.
 - 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
-- ⚡ **Smart caching**: Reusable pilot/lap phrases are cached separately; ephemeral lap-time files are discarded after each heat.
+- ⚡ **Smart caching**: Reusable pilot/lap phrases are cached separately; use **Rebuild pre-cache** after startup or voice model/settings changes to prepare them ahead of racing.
 
 ## Requirements
 
@@ -68,7 +68,8 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 3. Restart RotorHazard if requested.
 4. Open the RotorHazard settings page and enable **Local Voice**.
 5. Open `/player` from the RotorHazard host on the playback device.
-6. Use **Generate test phrase** or **Play audio check** to verify playback.
+6. Use **Rebuild pre-cache** to prepare schedule and current-heat pilot/lap WAV files.
+7. Use **Generate test phrase** or **Play audio check** to verify playback.
 
 The first generated phrase for a voice model downloads the Piper model into the RotorHazard data cache. That can take a moment depending on the server and network connection.
 

@@ -12,6 +12,7 @@ Important modules:
 - `sendspin.py`: synchronous adapter around `aiosendspin`, owns the background asyncio loop and active Sendspin stream.
 - `ui.py`: RotorHazard settings panel, quick buttons, and `/player` blueprint.
 - `const.py`: option names, defaults, voice model list, and Sendspin port.
+- `services/`: small stateful helpers extracted from `plugin.py`; currently schedule countdown timers.
 - `player/`: Vite/Preact source for the browser player; production output is written to `custom_plugins/local_voice/player/`.
 
 ## Runtime Behavior
@@ -23,7 +24,7 @@ Lap callouts are intentionally split:
 - reusable pilot/lap phrase: `"[name], Lap [n]"`, stored in the per-model `precache/` cache.
 - dynamic lap-time phrase: stored in the per-model `tmp/` cache.
 
-Do not clear `precache/` on `HEAT_SET`. A heat change should clear queued audio and `tmp/`, then generate any missing reusable pilot/lap phrases in the background. RotorHazard data reset and the **Clear TTS cache** button may clear all model WAV cache content, including `precache/`.
+Do not clear `precache/` on `HEAT_SET`. A heat change should clear queued audio and `tmp/` only. Operators can use **Rebuild pre-cache** to generate reusable pilot/lap phrases for the current heat. RotorHazard data reset and the **Clear TTS cache** button may clear all model WAV cache content, including `precache/`.
 
 Lap callouts should expire quickly enough to avoid stale race audio. The current lap expiry is intentionally longer than the queue default to handle several pilots crossing close together, but it should remain race-day conservative.
 

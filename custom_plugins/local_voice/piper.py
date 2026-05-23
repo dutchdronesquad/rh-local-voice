@@ -157,20 +157,23 @@ class PiperSynthesizer:
         cached_files = sum(1 for path in self._tts_dir.rglob("*.wav") if path.is_file())
         return f"{self._tts_dir} | {cached_files} cached WAV files"
 
-    def warmup(self, model_name: str, params: SynthesisParams) -> None:
-        """Load the model and run a short synthesis to warm up ONNX Runtime."""
+    def prepare_model(self, model_name: str, params: SynthesisParams) -> bool:
+        """Load the model and verify synthesis with the current parameters."""
         voice = self._load_voice(model_name)
         if voice is None:
-            return
+            return False
         try:
             buf = io.BytesIO()
             with wave.open(buf, "wb") as wav_file:
                 voice.synthesize_wav(
                     "ready", wav_file, syn_config=self._make_syn_config(params)
                 )
-            logger.info("Local Voice: model warm-up complete for %s", model_name)
         except Exception:
-            logger.exception("Local Voice: model warm-up failed for %s", model_name)
+            logger.exception("Local Voice: model preparation failed for %s", model_name)
+            return False
+        else:
+            logger.info("Local Voice: model prepared for %s", model_name)
+            return True
 
     def _load_voice(self, model_name: str) -> Any | None:
         """Load the selected Piper model once, downloading files if necessary."""

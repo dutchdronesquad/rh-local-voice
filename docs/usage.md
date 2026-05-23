@@ -43,7 +43,10 @@ Local Voice stores generated files under the RotorHazard data directory:
 local_voice_cache/
   models/                 downloaded Piper ONNX models
   tts/<model>/            normal cached phrases
-  tts/<model>/precache/   pre-generated "[name], Lap [n]" phrases
+  tts/<model>/precache/laps/
+                           pre-generated "[name], Lap [n]" phrases
+  tts/<model>/precache/schedule/
+                           scheduled-race countdown phrases
   tts/<model>/tmp/        ephemeral lap-time phrases
   tts/<model>/test/       generated test phrases
 ```
@@ -51,7 +54,7 @@ local_voice_cache/
 Cache behavior:
 
 - `tmp/` is cleared whenever a heat is selected.
-- `precache/` keeps existing reusable phrases; missing entries for the selected heat are generated in the background.
+- `precache/` keeps existing reusable phrases. Use **Rebuild pre-cache** to generate schedule and current-heat pilot/lap phrases on demand.
 - `tmp/` and `precache/` are cleared on RotorHazard data reset.
 - **Clear TTS cache** removes all WAV files for the selected model.
 

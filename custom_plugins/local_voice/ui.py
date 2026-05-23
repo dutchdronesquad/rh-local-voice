@@ -105,7 +105,9 @@ def register_ui(  # noqa: PLR0913
         "local_voice_notes",
         '<a href="/player" target="_blank" rel="noopener noreferrer">'
         "Open browser player in a new tab</a>\n\n"
-        "⚠ Set Voice Volume to 0 on all browser clients.",
+        "⚠ Set Voice Volume to 0 on all browser clients.\n\n"
+        "After startup or voice setting changes, use Rebuild pre-cache to "
+        "prepare schedule and current-heat WAV files.",
     )
 
     # Test phrase

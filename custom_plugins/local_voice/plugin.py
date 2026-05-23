@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import threading
@@ -43,9 +44,12 @@ _AUDIO_CHECK_WAV = _ASSET_DIR / "moavii-foreign.wav"
 _UI_NOTIFY_PREFIXES = ("Downloading model", "Loading model", "Model loaded")
 
 # Maximum lap number to pre-cache per pilot when a heat loads.
-_PRECACHE_MAX_LAPS = 15
-_PRECACHE_SUBDIR = "precache"
+_PRECACHE_MAX_LAPS = 6
+_PRECACHE_LAPS_SUBDIR = "precache/laps"
 _LAP_CALLOUT_EXPIRY_SEC = 10.0
+
+with (Path(__file__).parent / "locales.json").open(encoding="utf-8") as _f:
+    _LOCALES: dict[str, dict] = json.load(_f)
 
 
 class LocalVoicePlugin:
@@ -68,6 +72,7 @@ class LocalVoicePlugin:
         self._audio_queue = AudioQueue(player=self._sendspin.play)
         self._precache_generation = 0
         self._precache_lock = threading.Lock()
+        self._warmed_model: str | None = None
         self._synth_pool = ThreadPoolExecutor(
             max_workers=os.cpu_count() or 4,
             thread_name_prefix="local_voice_synth",
@@ -79,6 +84,7 @@ class LocalVoicePlugin:
             audio_check_callback=self.play_audio_check,
             stop_audio_callback=self.stop_audio,
             clear_cache_callback=self.clear_tts_cache,
+            rebuild_precache_callback=self.rebuild_precache,
         )
         self._register_events()
         self._register_filters()
@@ -146,10 +152,13 @@ class LocalVoicePlugin:
         lap_number = snapshot["lap"]
         pilot_name = snapshot.get("pilot") or snapshot.get("callsign")
         phonetic_time = snapshot.get("phonetic")
-        part1 = f"{pilot_name}, Lap {lap_number}" if pilot_name else f"Lap {lap_number}"
+        lap = self._locale().get("lap", "Lap")
+        part1 = (
+            f"{pilot_name}, {lap} {lap_number}" if pilot_name else f"{lap} {lap_number}"
+        )
 
         wav_paths: list[Path] = []
-        if path := self._synthesize(part1, _PRECACHE_SUBDIR):
+        if path := self._synthesize(part1, _PRECACHE_LAPS_SUBDIR):
             wav_paths.append(path)
         if phonetic_time and (path := self._synthesize(str(phonetic_time), "tmp")):
             wav_paths.append(path)
@@ -191,9 +200,25 @@ class LocalVoicePlugin:
             logger.info("Local Voice cleared %d queued audio jobs on heat set", dropped)
         model_name = self._model_name()
         self._clear_wavs(self._tts.tmp_dir_for_model(model_name), "ephemeral")
+        if model_name != self._warmed_model:
+            self._synth_pool.submit(self._warmup_model)
         heat_id = args.get("heat_id")
         if heat_id and self._enabled():
-            self._synth_pool.submit(self._precache_heat, heat_id, precache_generation)
+            future = self._synth_pool.submit(
+                self._precache_heat, heat_id, precache_generation
+            )
+
+            def _on_heat_precache_done(f: Any) -> None:
+                count = f.result() or 0
+                if count > 0 and self._precache_is_current(precache_generation):
+                    heat = self._rhapi.db.heat_by_id(heat_id)
+                    heat_name = heat.name if heat else heat_id
+                    self._rhapi.ui.message_notify(
+                        f"Local Voice: pre-cache ready for {heat_name}"
+                        f" ({count} new WAV files)"
+                    )
+
+            future.add_done_callback(_on_heat_precache_done)
 
     def _on_event_cache_reset(self, _args: dict[str, Any]) -> None:
         """Wipe event-specific WAVs when RotorHazard starts a new data set."""
@@ -263,6 +288,45 @@ class LocalVoicePlugin:
             f"Local Voice: cleared {len(wav_files)} WAV files for {model_name}"
         )
 
+    def rebuild_precache(self, _args: dict[str, Any] | None = None) -> None:
+        """Clear and regenerate pre-cached phrases for the current model and heat."""
+        with self._precache_lock:
+            self._precache_generation += 1
+            generation = self._precache_generation
+
+        model_name = self._model_name()
+        precache_dir = self._tts.precache_dir_for_model(model_name)
+        self._clear_wavs(precache_dir / "laps", "pre-cache laps")
+        self._clear_wavs(precache_dir / "clock", "pre-cache clock")
+
+        self._rhapi.ui.message_notify("Local Voice: rebuilding pre-cache...")
+
+        heat_id = self._rhapi.race.heat
+
+        def _on_rebuild_done(f: Any) -> None:
+            if not self._precache_is_current(generation):
+                return
+            count = f.result() or 0
+            if heat_id:
+                heat = self._rhapi.db.heat_by_id(heat_id)
+                heat_name = heat.name if heat else heat_id
+                msg = (
+                    f"Local Voice: pre-cache rebuild complete for {heat_name}"
+                    f" ({count} new WAV files)"
+                )
+            else:
+                msg = f"Local Voice: pre-cache rebuild complete ({count} new WAV files)"
+            self._rhapi.ui.message_notify(msg)
+
+        warmup_future = self._synth_pool.submit(self._warmup_model)
+        if heat_id:
+            heat_future = self._synth_pool.submit(
+                self._precache_heat, heat_id, generation
+            )
+            heat_future.add_done_callback(_on_rebuild_done)
+        else:
+            warmup_future.add_done_callback(_on_rebuild_done)
+
     # ------------------------------------------------------------------
     # Synthesis helpers
     # ------------------------------------------------------------------
@@ -306,13 +370,16 @@ class LocalVoicePlugin:
     # ------------------------------------------------------------------
 
     def _warmup_model(self) -> None:
-        self._tts.warmup(self._model_name(), self._synth_params())
+        model_name = self._model_name()
+        self._tts.warmup(model_name, self._synth_params())
+        self._warmed_model = model_name
 
-    def _precache_heat(self, heat_id: int, generation: int) -> None:
+    def _precache_heat(self, heat_id: int, generation: int) -> int:
         """Pre-synthesize pilot + lap-number phrases for all pilots in the heat."""
         slots = self._rhapi.db.slots_by_heat(heat_id)
         model_name = self._model_name()
         params = self._synth_params()
+        lap_word = self._locale().get("lap", "Lap")
         started = time.perf_counter()
         count = 0
         for slot in slots:
@@ -329,12 +396,12 @@ class LocalVoicePlugin:
                     logger.info(
                         "Local Voice stopped stale pre-cache job for heat %s", heat_id
                     )
-                    return
+                    return count
                 result = self._tts.synthesize_to_cache(
-                    text=f"{name}, Lap {lap}",
+                    text=f"{name}, {lap_word} {lap}",
                     model_name=model_name,
                     params=params,
-                    subdir=_PRECACHE_SUBDIR,
+                    subdir=_PRECACHE_LAPS_SUBDIR,
                 )
                 if result is not None and not result.cache_hit:
                     count += 1
@@ -345,6 +412,7 @@ class LocalVoicePlugin:
             heat_id,
             elapsed_ms,
         )
+        return count
 
     def _clear_wavs(self, directory: Path, label: str) -> None:
         """Delete WAV files under a cache subdirectory."""
@@ -376,6 +444,9 @@ class LocalVoicePlugin:
         if isinstance(value, bool):
             return value
         return str(value).lower() not in {"0", "false", "no", ""}
+
+    def _locale(self) -> dict:
+        return _LOCALES.get(self._model_name()[:2], _LOCALES["en"])
 
     def _model_name(self) -> str:
         value = str(self._option(VOICE_MODEL_OPTION, default=DEFAULT_MODEL))

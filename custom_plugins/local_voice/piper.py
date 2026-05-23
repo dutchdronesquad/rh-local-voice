@@ -173,11 +173,7 @@ class PiperSynthesizer:
             logger.exception("Local Voice: model warm-up failed for %s", model_name)
 
     def _load_voice(self, model_name: str) -> Any | None:
-        """Load the selected Piper model once, downloading files if necessary.
-
-        The ONNX session uses all available CPU cores via intra_op_num_threads
-        so each sequential synthesis call runs as fast as possible.
-        """
+        """Load the selected Piper model once, downloading files if necessary."""
         if self._voice is not None and self._loaded_model == model_name:
             return self._voice
 

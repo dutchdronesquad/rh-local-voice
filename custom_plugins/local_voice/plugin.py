@@ -48,8 +48,11 @@ _PRECACHE_MAX_LAPS = 6
 _PRECACHE_LAPS_SUBDIR = "precache/laps"
 _LAP_CALLOUT_EXPIRY_SEC = 10.0
 
-with (Path(__file__).parent / "locales.json").open(encoding="utf-8") as _f:
-    _LOCALES: dict[str, dict] = json.load(_f)
+try:
+    with (Path(__file__).parent / "locales.json").open(encoding="utf-8") as _f:
+        _LOCALES: dict[str, dict] = json.load(_f)
+except (OSError, json.JSONDecodeError) as exc:
+    raise RuntimeError("Local Voice: failed to load locales.json") from exc
 
 
 class LocalVoicePlugin:
@@ -209,14 +212,21 @@ class LocalVoicePlugin:
             )
 
             def _on_heat_precache_done(f: Any) -> None:
-                count = f.result() or 0
-                if count > 0 and self._precache_is_current(precache_generation):
-                    heat = self._rhapi.db.heat_by_id(heat_id)
-                    heat_name = heat.name if heat else heat_id
-                    self._rhapi.ui.message_notify(
-                        f"Local Voice: pre-cache ready for {heat_name}"
-                        f" ({count} new WAV files)"
+                try:
+                    count = f.result() or 0
+                except Exception:
+                    logger.exception(
+                        "Local Voice pre-cache failed for heat %s", heat_id
                     )
+                    return
+                if count > 0 and self._precache_is_current(precache_generation):
+                    with contextlib.suppress(Exception):
+                        heat = self._rhapi.db.heat_by_id(heat_id)
+                        heat_name = heat.name if heat else heat_id
+                        self._rhapi.ui.message_notify(
+                            f"Local Voice: pre-cache ready for {heat_name}"
+                            f" ({count} new WAV files)"
+                        )
 
             future.add_done_callback(_on_heat_precache_done)
 
@@ -306,17 +316,25 @@ class LocalVoicePlugin:
         def _on_rebuild_done(f: Any) -> None:
             if not self._precache_is_current(generation):
                 return
-            count = f.result() or 0
-            if heat_id:
-                heat = self._rhapi.db.heat_by_id(heat_id)
-                heat_name = heat.name if heat else heat_id
-                msg = (
-                    f"Local Voice: pre-cache rebuild complete for {heat_name}"
-                    f" ({count} new WAV files)"
-                )
-            else:
-                msg = f"Local Voice: pre-cache rebuild complete ({count} new WAV files)"
-            self._rhapi.ui.message_notify(msg)
+            try:
+                count = f.result() or 0
+            except Exception:
+                logger.exception("Local Voice pre-cache rebuild failed")
+                return
+            with contextlib.suppress(Exception):
+                if heat_id:
+                    heat = self._rhapi.db.heat_by_id(heat_id)
+                    heat_name = heat.name if heat else heat_id
+                    msg = (
+                        f"Local Voice: pre-cache rebuild complete for {heat_name}"
+                        f" ({count} new WAV files)"
+                    )
+                else:
+                    msg = (
+                        "Local Voice: pre-cache rebuild complete "
+                        f"({count} new WAV files)"
+                    )
+                self._rhapi.ui.message_notify(msg)
 
         warmup_future = self._synth_pool.submit(self._warmup_model)
         if heat_id:

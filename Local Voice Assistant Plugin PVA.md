@@ -41,7 +41,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Add a post-plugin-load event such as `Evt.PLUGINS_READY` or `Evt.SETTINGS_READY`, fired after plugin loading and registered setting defaults are initialized. This gives plugins a stable point to read options and start background work.
 
-**Status: Post-MVP / deferred.** Local Voice does not automatically build startup pre-cache until RH exposes a reliable lifecycle event. Operators can use **Rebuild pre-cache** after startup.
+**Status: Post-MVP / deferred.** Local Voice does not automatically build startup pre-cache until RH exposes a reliable lifecycle event. Operators can use **Rebuild pre-cache** after first setup or voice model/settings changes.
 
 ---
 
@@ -51,7 +51,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Add `Evt.RACE_CLOCK_WARNING` fired by the RH race thread at configurable thresholds (e.g. 60s, 30s, 10s remaining), with payload `{'seconds_remaining': int}`. This would let any plugin — not just audio plugins — react to race time milestones without reimplementing a parallel timer.
 
-**Status: Implemented.** `Evt.RACE_CLOCK_WARNING` added to RotorHazard (`eventmanager.py`, `RHRace.race_expire_thread`). Plugin synthesizes callouts at 60s ("One minute"), 30s ("30 seconds"), and 10s ("10 seconds").
+**Status: Implemented on the upstream race-clock-warning branch.** `Evt.RACE_CLOCK_WARNING` added to RotorHazard (`eventmanager.py`, `RHRace.race_expire_thread`). Plugin synthesizes callouts at 60s ("One minute"), 30s ("30 seconds"), and 10s ("10 seconds").
 
 ---
 
@@ -382,7 +382,7 @@ Cache path: `{model_name}/{sha1(normalized_text)}_{speed}_{noise}_{noise_w}.wav`
 Current heat-load behavior:
 - Clears ephemeral lap-time WAV files for the selected model.
 - Pre-cache generation is manual via **Rebuild pre-cache** until RH provides a reliable plugin-ready lifecycle event.
-- Rebuild pre-cache generates schedule phrases, current-heat pilot-name segments, and lap-number segments under `tts/<model>/precache/`.
+- Rebuild pre-cache generates race-clock warning phrases, schedule phrases, current-heat pilot-name segments, and lap-number segments under `tts/<model>/precache/`.
 
 ---
 

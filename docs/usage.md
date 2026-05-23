@@ -10,7 +10,8 @@ This guide covers day-to-day setup and operation for Local Voice.
 4. Install and start the Sendspin service on the RotorHazard host.
 5. Open `/player` from the RotorHazard host in a browser tab on the playback device, for example `http://rotorhazard.local:5000/player`.
 6. Set normal RotorHazard browser Voice Volume to `0` on clients that should only use Local Voice audio.
-7. Use **Generate test phrase** or **Play audio check** to verify playback.
+7. Use **Rebuild pre-cache** after first setup or voice model/settings changes.
+8. Use **Generate test phrase** or **Play audio check** to verify playback.
 
 The Sendspin service receives plugin playback jobs on `127.0.0.1:8766` and
 serves browser players on port `8927`. If another machine is used for
@@ -78,6 +79,8 @@ local_voice_cache/
                            pre-generated pilot-name segments
   tts/<model>/precache/laps/
                            pre-generated "Lap [n]" segments
+  tts/<model>/precache/clock/
+                           race-clock warning phrases
   tts/<model>/precache/schedule/
                            scheduled-race countdown phrases
   tts/<model>/tmp/        ephemeral lap-time phrases
@@ -87,7 +90,7 @@ local_voice_cache/
 Cache behavior:
 
 - `tmp/` is cleared whenever a heat is selected.
-- `precache/` keeps existing reusable phrases. Use **Rebuild pre-cache** to generate schedule phrases, current-heat pilot-name segments, and lap-number segments on demand.
+- `precache/` keeps existing reusable phrases. Use **Rebuild pre-cache** to generate race-clock warning phrases, schedule phrases, current-heat pilot-name segments, and lap-number segments on demand.
 - `tmp/` and `precache/` are cleared on RotorHazard data reset.
 - **Clear TTS cache** removes all WAV files for the selected model.
 
@@ -96,6 +99,7 @@ Cache behavior:
 - Local Voice does not disable RotorHazard's built-in browser speech. Set Voice Volume to `0` on regular RotorHazard browser clients to avoid duplicate callouts.
 - The first use of a voice model requires internet access to download model files. Racing can run offline after the selected model has been cached.
 - Callouts are generated server-side; browser-specific RotorHazard voice settings do not affect Local Voice output.
+- Race-clock warning callouts require a RotorHazard build that provides `Evt.RACE_CLOCK_WARNING`.
 - If no Sendspin browser player is connected, generated audio is dropped and logged.
 
 ## Troubleshooting

@@ -1,0 +1,82 @@
+# Architecture
+
+## Overview
+
+The plugin is structured as a pipeline: RotorHazard events → synthesis → audio queue → Sendspin → browser clients.
+
+```
+RH event thread
+  │
+  ├─ Flt.EMIT_PHONETIC_DATA  ──► ThreadPoolExecutor (_synth_pool)
+  ├─ Flt.EMIT_PHONETIC_TEXT  ──►   │
+  ├─ Evt.HEAT_SET            ──►   │  PiperSynthesizer
+  └─ Evt.RACE_CLOCK_WARNING  ──►   │    └─ ONNX Runtime (CPU, sequential)
+                                   │    └─ WAV cache (disk)
+                                   ▼
+                               AudioQueue (priority queue, daemon thread)
+                                   │
+                                   ▼
+                               SendSpinServer (asyncio event loop, daemon thread)
+                                   │
+                                   ▼
+                            Browser clients (Sendspin protocol)
+```
+
+## TTS concurrency model
+
+Piper synthesis runs via [ONNX Runtime](https://onnxruntime.ai/) on the CPU. ONNX Runtime's `CPUExecutionProvider` serialises `session.run()` calls globally within a process, meaning concurrent inference across multiple threads yields no throughput gain.
+
+The plugin therefore uses a single shared `InferenceSession` with `intra_op_num_threads` set to the full CPU core count. This maximises the speed of each individual synthesis call. A `ThreadPoolExecutor` is still used, but only to keep the RotorHazard event thread free — not to parallelise inference.
+
+**Consequence for future changes:** do not create multiple `InferenceSession` instances or submit parallel synthesis tasks expecting a throughput improvement. True parallel inference would require multiprocessing (separate processes with separate ONNX runtimes), which is too heavyweight for a Raspberry Pi deployment.
+
+Although `max_workers` is set to `os.cpu_count()`, this does not cause N×N thread contention: the ONNX global lock means only one inference runs at a time and the remaining workers simply block waiting for the lock — they do not consume CPU. The high worker count is intentional so that a simultaneous burst of lap crossings (up to N pilots at once) can each claim a worker immediately rather than queuing behind one another in the executor.
+
+## WAV cache layout
+
+All generated WAV files live under `{rh-data}/local_voice_cache/`:
+
+```
+local_voice_cache/
+  models/
+    {model_name}.onnx          # downloaded once on first use
+    {model_name}.onnx.json
+  tts/
+    {model_name}/
+      precache/
+        laps/                  # pilot + lap-number phrases pre-generated on heat select
+        clock/                 # clock warning phrases pre-generated on model warm-up
+      tmp/                     # ephemeral lap-time WAVs; cleared on each heat select
+      test/                    # test-phrase WAVs generated via the UI button
+      {sha1}_{speed}_{...}.wav # ad-hoc cached phrases
+```
+
+Cache keys are `sha1(text.lower())_{speed}_{noise}_{noise_w}` so switching synthesis parameters never causes stale-cache collisions. The model name is always part of the directory path, so switching voice models is also safe.
+
+## Audio queue and priority
+
+`AudioQueue` is a `PriorityQueue` drained by a single daemon thread. Jobs carry a `Priority` (HIGH / NORMAL / LOW) and an expiry timestamp. The worker drops any job whose deadline has passed before playback starts.
+
+| Priority | Used for |
+|----------|----------|
+| HIGH     | Winner announcement, manual test phrase |
+| NORMAL   | Lap callouts, clock warnings |
+| LOW      | Reserved |
+
+## Sendspin integration
+
+`SendSpinServer` wraps `aiosendspin` behind a synchronous interface. It runs an asyncio event loop on a dedicated daemon thread and exposes blocking `play()` / `stop()` methods so the `AudioQueue` worker (a plain thread) can interact with it without knowing about asyncio.
+
+Key design points:
+- Consecutive `play()` calls append to the active stream rather than restarting it, so back-to-back lap callouts play without audible resets or gaps.
+- Late-joining browser clients are synced into the active stream group so they receive audio already in progress.
+- The stream is torn down automatically after the last queued clip finishes playing (idle-stop task).
+
+## Lap callout split synthesis
+
+Each lap callout is synthesized in two parts and played as a single job:
+
+1. **Part 1** — `"{callsign}, {Lap} {n}"` — stored in `precache/laps/` and reused across multiple heats for the same pilot.
+2. **Part 2** — the phonetic lap time (e.g. `"twelve point four seconds"`) — synthesized live into `tmp/` and unique per crossing.
+
+Splitting avoids re-synthesizing the pilot name on every crossing while still allowing the dynamic lap time to be generated on demand.

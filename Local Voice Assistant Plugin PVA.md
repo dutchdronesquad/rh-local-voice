@@ -45,7 +45,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 ---
 
-### Arm sequence countdown events
+### Staging tone events
 
 **Problem:** The staging beeps ("3... 2... 1...") before race start are generated in browser JS. There is no `Evt.RACE_ARM_TONE` or similar server event. Plugin cannot reproduce the countdown sequence without reimplementing the staging logic.
 
@@ -326,7 +326,7 @@ MVP plugin audio profile mirrors the familiar RH categories that can be implemen
 
 Post-MVP profile additions:
 - Race clock callouts
-- Arm sequence countdown beeps
+- Staging tone beeps
 - Race tied / overtime callouts
 - Race leader callouts
 
@@ -502,6 +502,8 @@ Post-MVP work starts after the local MVP is race-day usable: full local race cal
 - [ ] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
 - [ ] Race clock callouts via upstream `Evt.RACE_CLOCK_WARNING`
 - [ ] Arm sequence countdown beeps via upstream `Evt.RACE_ARM_TONE`
+- [ ] Last-5-seconds countdown beeps (one `stage.wav` per second for the final 5s) and `buzzer.wav` at race end — mirrors browser behaviour; needs per-second `Evt.RACE_CLOCK_WARNING` thresholds (5, 4, 3, 2, 1) or a dedicated end-of-race countdown mechanism
+- [ ] Scheduled race start callouts ("Next race begins in 30 seconds" etc.)
 - [ ] Race tied / overtime via upstream `Evt.RACE_TIED` / `Evt.RACE_OVERTIME`
 - [ ] Race leader via `Flt.EMIT_PHONETIC_LEADER` (payload: `pilot`, `callsign`; already hookable today — deferred to keep MVP scope small)
 - [ ] Audio profile toggles for race clock, arm sequence, race tied/overtime, and race leader callouts

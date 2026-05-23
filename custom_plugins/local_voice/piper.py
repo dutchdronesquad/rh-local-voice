@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import logging
+import os
 import threading
 import time
 import unicodedata
@@ -100,7 +101,9 @@ class PiperSynthesizer:
 
         if wav_path.exists() and self.valid_wav(wav_path):
             duration_ms = int((time.perf_counter() - started) * 1000)
-            logger.info("Local Voice cache hit for '%s': %s", normalized_text, wav_path)
+            logger.debug(
+                "Local Voice cache hit for '%s': %s", normalized_text, wav_path
+            )
             return SynthesisResult(
                 text=normalized_text,
                 wav_path=wav_path,
@@ -126,12 +129,6 @@ class PiperSynthesizer:
             return None
 
         duration_ms = int((time.perf_counter() - started) * 1000)
-        logger.info(
-            "Local Voice synthesized '%s' to %s in %sms",
-            normalized_text,
-            wav_path,
-            duration_ms,
-        )
         return SynthesisResult(
             text=normalized_text,
             wav_path=wav_path,
@@ -176,17 +173,11 @@ class PiperSynthesizer:
             logger.exception("Local Voice: model warm-up failed for %s", model_name)
 
     def _load_voice(self, model_name: str) -> Any | None:
-        """Load the selected Piper model once, downloading files if necessary.
-
-        The ONNX session is created with ``intra_op_num_threads=1`` so that
-        multiple synthesis workers can each occupy exactly one CPU core without
-        competing for threads — important on low-core hardware like a Pi 4.
-        """
+        """Load the selected Piper model once, downloading files if necessary."""
         if self._voice is not None and self._loaded_model == model_name:
             return self._voice
 
         with self._voice_lock:
-            # Re-check inside the lock — another thread may have loaded it first.
             if self._voice is not None and self._loaded_model == model_name:
                 return self._voice
 
@@ -200,7 +191,7 @@ class PiperSynthesizer:
                 with config_path.open("r", encoding="utf-8") as f:
                     config_dict = json.load(f)
                 sess_options = onnxruntime.SessionOptions()
-                sess_options.intra_op_num_threads = 1
+                sess_options.intra_op_num_threads = os.cpu_count() or 4
                 self._voice = PiperVoice(
                     config=PiperConfig.from_dict(config_dict),
                     session=onnxruntime.InferenceSession(

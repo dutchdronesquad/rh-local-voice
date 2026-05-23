@@ -79,15 +79,25 @@ class LapCalloutSegments:
         self, pilot_names: Iterable[str], model_name: str
     ) -> Iterator[CalloutSegment]:
         """Yield all reusable lap-callout segments for pre-cache."""
+        yield from self.precache_lap_segments(model_name)
+        yield from self.precache_pilot_segments(pilot_names)
+
+    def precache_lap_segments(self, model_name: str) -> Iterator[CalloutSegment]:
+        """Yield reusable lap-number segments for pre-cache."""
         for lap in range(1, self._max_precached_laps + 1):
             yield CalloutSegment(self._lap_phrase(lap, model_name), LAP_SEGMENTS_SUBDIR)
 
+    def precache_pilot_segments(
+        self, pilot_names: Iterable[str]
+    ) -> Iterator[CalloutSegment]:
+        """Yield reusable pilot-name segments for pre-cache."""
         seen_pilots: set[str] = set()
         for pilot_name in pilot_names:
             name = str(pilot_name).strip()
-            if not name or name in seen_pilots:
+            name_key = name.casefold()
+            if not name or name_key in seen_pilots:
                 continue
-            seen_pilots.add(name)
+            seen_pilots.add(name_key)
             yield CalloutSegment(self._pilot_phrase(name), PILOT_SEGMENTS_SUBDIR)
 
     @staticmethod

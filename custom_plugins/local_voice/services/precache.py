@@ -88,18 +88,15 @@ class PrecacheManager:
         count = 0
         self._prepare_model(settings)
         count += self._precache_schedule(settings, generation)
+        count += self._precache_laps(settings, generation)
         if heat_id and self._is_current(generation):
-            count += self._precache_heat(heat_id, generation, settings)
+            count += self._precache_pilots(heat_id, generation, settings)
         return count
 
     def _precache_schedule(self, settings: Any, generation: int) -> int:
-        """Clear and regenerate schedule countdown phrases for the current params."""
+        """Regenerate schedule countdown phrases for the current params."""
         if not self._is_current(generation):
             return 0
-        self._clear_wavs(
-            self._tts.precache_dir_for_model(settings.model_name) / "schedule",
-            "pre-cache schedule",
-        )
         count = 0
         for threshold in DEFAULT_THRESHOLDS:
             if not self._is_current(generation):
@@ -112,14 +109,23 @@ class PrecacheManager:
             )
         return count
 
-    def _precache_heat(self, heat_id: int, generation: int, settings: Any) -> int:
-        """Pre-synthesize pilot and lap-number segments for the current heat."""
-        pilot_names = self._pilot_names_for_heat(heat_id)
+    def _precache_laps(self, settings: Any, generation: int) -> int:
+        """Pre-synthesize heat-independent lap-number segments."""
+        count = 0
+        for segment in self._lap_callouts.precache_lap_segments(settings.model_name):
+            if not self._is_current(generation):
+                logger.info("Local Voice stopped stale lap pre-cache job")
+                return count
+            count += self._precache_phrase(segment.text, segment.subdir, settings)
+        return count
+
+    def _precache_pilots(self, heat_id: int, generation: int, settings: Any) -> int:
+        """Pre-synthesize pilot-name segments for the current heat."""
         started = time.perf_counter()
         count = 0
 
-        for segment in self._lap_callouts.precache_segments(
-            pilot_names, settings.model_name
+        for segment in self._lap_callouts.precache_pilot_segments(
+            self._pilot_names_for_heat(heat_id)
         ):
             if self._precache_stopped(generation, heat_id):
                 return count

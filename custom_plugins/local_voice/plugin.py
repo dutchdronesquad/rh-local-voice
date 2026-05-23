@@ -128,6 +128,12 @@ class LocalVoicePlugin:
             self._on_event_cache_reset,
             name="local_voice_database_reset",
         )
+        if clock_warning_evt := getattr(Evt, "RACE_CLOCK_WARNING", None):
+            self._rhapi.events.on(
+                clock_warning_evt,
+                self._on_clock_warning,
+                name="local_voice_clock_warning",
+            )
         self._rhapi.events.on(
             Evt.RACE_SCHEDULE,
             self._on_race_schedule,
@@ -232,6 +238,30 @@ class LocalVoicePlugin:
     def _current_heat_id(self) -> int | None:
         heat_id = self._rhapi.race.heat
         return heat_id or None
+
+    def _on_clock_warning(self, args: dict[str, Any]) -> None:
+        """Synthesize and enqueue a race clock warning callout."""
+        if not self._enabled():
+            return
+        seconds = args.get("seconds_remaining")
+        if seconds is None:
+            return
+        text = self._locale()["clock_warning"].get(str(seconds), f"{seconds} seconds")
+        self._synth_pool.submit(
+            self._enqueue, text, Priority.NORMAL, time.monotonic() + 8.0
+        )
+
+    def _on_clock_warning(self, args: dict[str, Any]) -> None:
+        """Synthesize and enqueue a race clock warning callout."""
+        if not self._enabled():
+            return
+        seconds = args.get("seconds_remaining")
+        if seconds is None:
+            return
+        text = self._locale()["clock_warning"].get(str(seconds), f"{seconds} seconds")
+        self._synth_pool.submit(
+            self._enqueue, text, Priority.NORMAL, time.monotonic() + 8.0
+        )
 
     def _on_event_cache_reset(self, _args: dict[str, Any]) -> None:
         """Wipe event-specific WAVs when RotorHazard starts a new data set."""

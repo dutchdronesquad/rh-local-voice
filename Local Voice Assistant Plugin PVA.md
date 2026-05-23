@@ -51,7 +51,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Add `Evt.RACE_CLOCK_WARNING` fired by the RH race thread at configurable thresholds (e.g. 60s, 30s, 10s remaining), with payload `{'seconds_remaining': int}`. This would let any plugin — not just audio plugins — react to race time milestones without reimplementing a parallel timer.
 
-**Status: Post-MVP / deferred.** Not implemented in the plugin until RH provides a proper server-side event. Race clock callouts are skipped for now.
+**Status: Implemented.** `Evt.RACE_CLOCK_WARNING` added to RotorHazard (`eventmanager.py`, `RHRace.race_expire_thread`). Plugin synthesizes callouts at 60s ("One minute"), 30s ("30 seconds"), and 10s ("10 seconds").
 
 ---
 
@@ -405,7 +405,7 @@ MVP plugin audio profile mirrors the familiar RH categories that can be implemen
 - Voice volume, beep volume, speech speed, voice model
 
 Post-MVP profile additions:
-- Race clock callouts
+- Race clock callouts ✓
 - Staging tone beeps
 - Race tied / overtime callouts
 - Race leader callouts
@@ -593,7 +593,7 @@ and expiry. Sendspin services are output targets.
 
 #### Deferred RH / RHAPI-dependent callouts
 - [ ] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
-- [ ] Race clock callouts via upstream `Evt.RACE_CLOCK_WARNING`
+- [x] Race clock callouts via upstream `Evt.RACE_CLOCK_WARNING`
 - [ ] Arm sequence countdown beeps via upstream `Evt.RACE_ARM_TONE`
 - [ ] Last-5-seconds countdown beeps (one `stage.wav` per second for the final 5s) and `buzzer.wav` at race end — mirrors browser behaviour; needs per-second `Evt.RACE_CLOCK_WARNING` thresholds (5, 4, 3, 2, 1) or a dedicated end-of-race countdown mechanism
 - [ ] Scheduled race start callouts ("Next race begins in 30 seconds" etc.)

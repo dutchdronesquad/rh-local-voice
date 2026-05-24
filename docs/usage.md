@@ -11,20 +11,13 @@ This guide covers day-to-day setup and operation for Local Voice.
 5. Set normal RotorHazard browser Voice Volume to `0` on clients that should only use Local Voice audio.
 6. Use **Generate test phrase** or **Play audio check** to verify playback.
 
-The current plugin release still owns the local Sendspin server inside the
-RotorHazard plugin process. The standalone Sendspin service described below is
-migration work and is not the default user-facing playback path until the plugin
-HTTP output layer is connected.
+The current plugin release still owns the local Sendspin server inside the RotorHazard plugin process. The standalone Sendspin service described below is migration work and is not the default user-facing playback path until the plugin HTTP output layer is connected.
 
 ## Standalone Sendspin Service
 
-The planned local playback path is a separate service package named
-`sendspin-service`. In the target architecture, the plugin generates and
-caches WAV files, then sends playback jobs to the service over local HTTP.
+The planned local playback path is a separate service package named `sendspin-service`. In the target architecture, the plugin generates and caches WAV files, then sends playback jobs to the service over local HTTP.
 
-The repository now contains a first standalone service implementation under
-`sendspin_service/`. It owns its own `AudioQueue` and Sendspin server adapter so
-the migration can proceed without importing RotorHazard plugin modules.
+The repository now contains a first standalone service implementation under `sendspin_service/`. It owns its own `AudioQueue` and Sendspin server adapter so the migration can proceed without importing RotorHazard plugin modules.
 
 Current development command:
 
@@ -42,8 +35,7 @@ python -m sendspin_service \
   --sendspin-port 8927
 ```
 
-The same values can be provided through environment variables, matching the
-planned systemd `/etc/default/sendspin-service` file:
+The same values can be provided through environment variables, matching the planned systemd `/etc/default/sendspin-service` file:
 
 ```shell
 SENDSPIN_INGEST_HOST=127.0.0.1
@@ -54,9 +46,7 @@ SENDSPIN_ADVERTISE=true
 SENDSPIN_MAX_BODY_MB=50
 ```
 
-`SENDSPIN_MAX_BODY_MB` can adjust the ingest request limit up to the built-in
-100 MiB cap. The service accepts JSON file paths, not uploaded audio data, so
-the default is intentionally conservative.
+`SENDSPIN_MAX_BODY_MB` can adjust the ingest request limit up to the built-in 100 MiB cap. The service accepts JSON file paths, not uploaded audio data, so the default is intentionally conservative.
 
 Target user install:
 
@@ -83,10 +73,20 @@ Example playback payload:
 }
 ```
 
-Packaging work is tracked in `Sendspin Service Package PVA.md`.
-The repository also contains a Debian package skeleton under `packaging/deb/`.
-That skeleton defines the planned systemd unit, default config, and maintainer
-script behavior, but it does not yet build the self-contained executable.
+Packaging work is tracked in `Sendspin Service Package PVA.md`. The repository also contains a Debian package skeleton under `packaging/deb/`. That skeleton defines the planned systemd unit, default config, and maintainer script behavior. The experimental build script below combines that skeleton with a PyInstaller executable.
+
+Maintainers can build the first experimental Debian package with:
+
+```shell
+uv run --with pyinstaller python -m tools.build_sendspin_service_deb
+```
+
+The script builds a PyInstaller executable and writes the `.deb` to `dist/`. This validates the package shape but is not yet the final production packaging decision. For local install testing, copy the package to `/tmp` first so `apt` can read it through its `_apt` sandbox user:
+
+```shell
+cp dist/sendspin-service_0.1.0_amd64.deb /tmp/
+sudo apt install /tmp/sendspin-service_0.1.0_amd64.deb
+```
 
 ## Settings
 

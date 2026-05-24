@@ -8,6 +8,7 @@ import logging
 import threading
 import time
 import wave
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from aiosendspin.server import AudioFormat
@@ -28,6 +29,13 @@ _TIMEOUT_MARGIN_S = 10
 _BUFFER_LIMIT_US = 500_000
 _LATE_JOIN_SYNC_INTERVAL_S = 0.1
 _MIN_SCHEDULE_DELAY_S = 0.05
+_SCHEDULED_BUFFER_MARGIN_US = 100_000
+
+
+@dataclass(frozen=True)
+class _StreamOptions:
+    max_buffer_us: int
+    full_clip: bool = False
 
 
 class _SendspinClock(Protocol):
@@ -275,12 +283,18 @@ class SendSpinServer:
         group, stream = await self._ensure_stream()
         if group is None or stream is None:
             return
-        client_count = await self._sync_connected_clients(group)
 
         play_start_us = self._next_play_start_us
         now_us = server.clock.now_us()
+        stream_options = _StreamOptions(max_buffer_us=_BUFFER_LIMIT_US)
         if play_at is not None:
             play_start_us = _scheduled_play_start_us(play_at, now_us)
+            stream_options = _StreamOptions(
+                max_buffer_us=_scheduled_buffer_limit_us(
+                    play_start_us, now_us, wav_paths
+                ),
+                full_clip=True,
+            )
         elif play_start_us is None or play_start_us <= now_us:
             play_start_us = now_us + int(_INITIAL_PLAYBACK_DELAY_S * 1_000_000)
         if self._would_start_after_expiry(play_start_us, now_us, expires_at):
@@ -295,8 +309,8 @@ class SendSpinServer:
                 stream,
                 wav_paths,
                 play_start_us=play_start_us,
-                initial_client_count=client_count,
                 sync_clients=sync_clients,
+                options=stream_options,
             )
             client_count = max(client_count, await sync_clients())
             if streamed_count:
@@ -318,12 +332,12 @@ class SendSpinServer:
         wav_paths: list[Path],
         *,
         play_start_us: int,
-        initial_client_count: int,
         sync_clients: Callable[[], Awaitable[int]],
+        options: _StreamOptions,
     ) -> tuple[int, int, int]:
         play_end_us = play_start_us
         streamed_count = 0
-        client_count = initial_client_count
+        client_count = 0
         next_play_start_us: int | None = play_start_us
         for wav_path in wav_paths:
             next_play_start_us, clip_end_us, client_count = await _stream_wav(
@@ -331,6 +345,7 @@ class SendSpinServer:
                 wav_path,
                 play_start_us=next_play_start_us,
                 sync_clients=sync_clients,
+                options=options,
             )
             if clip_end_us is not None:
                 play_end_us = clip_end_us
@@ -427,12 +442,25 @@ def _scheduled_play_start_us(play_at: float, now_us: int) -> int:
     return max(requested_start_us, minimum_start_us)
 
 
+def _scheduled_buffer_limit_us(
+    play_start_us: int, now_us: int, wav_paths: list[Path]
+) -> int:
+    """Allow future scheduled clips to be fully queued before playback starts."""
+    scheduled_delay_us = max(0, play_start_us - now_us)
+    duration_us = int(_wav_total_duration(wav_paths) * 1_000_000)
+    return max(
+        _BUFFER_LIMIT_US,
+        scheduled_delay_us + duration_us + _SCHEDULED_BUFFER_MARGIN_US,
+    )
+
+
 async def _stream_wav(
     stream: _PushStream,
     wav_path: Path,
     *,
     play_start_us: int | None,
     sync_clients: Callable[[], Awaitable[int]],
+    options: _StreamOptions,
 ) -> tuple[int | None, int | None, int]:
     client_count = await sync_clients()
     clip = _read_wav(wav_path)
@@ -440,15 +468,18 @@ async def _stream_wav(
         return play_start_us, None, client_count
     audio_format, pcm_data = clip
     bytes_per_frame = audio_format.channels * (audio_format.bit_depth // 8)
-    chunk_frames = max(1, int(audio_format.sample_rate * _CHUNK_DURATION_S))
-    chunk_bytes = chunk_frames * bytes_per_frame
+    if options.full_clip:
+        chunk_bytes = len(pcm_data)
+    else:
+        chunk_frames = max(1, int(audio_format.sample_rate * _CHUNK_DURATION_S))
+        chunk_bytes = chunk_frames * bytes_per_frame
     play_end_us: int | None = None
 
     for offset in range(0, len(pcm_data), chunk_bytes):
         if stream.is_stopped:
             return play_start_us, play_end_us, client_count
         client_count = await sync_clients()
-        await stream.sleep_to_limit_buffer(max_buffer_us=_BUFFER_LIMIT_US)
+        await stream.sleep_to_limit_buffer(max_buffer_us=options.max_buffer_us)
         chunk = pcm_data[offset : offset + chunk_bytes]
         stream.prepare_audio(chunk, audio_format, channel_id=MAIN_CHANNEL)
         chunk_start_us = await stream.commit_audio(play_start_us=play_start_us)

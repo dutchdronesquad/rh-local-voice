@@ -19,7 +19,7 @@ HTTP output layer is connected.
 ## Standalone Sendspin Service
 
 The planned local playback path is a separate service package named
-`rh-sendspin-service`. In the target architecture, the plugin generates and
+`sendspin-service`. In the target architecture, the plugin generates and
 caches WAV files, then sends playback jobs to the service over local HTTP.
 
 The repository now contains a first standalone service implementation under
@@ -42,10 +42,26 @@ python -m sendspin_service \
   --sendspin-port 8927
 ```
 
+The same values can be provided through environment variables, matching the
+planned systemd `/etc/default/sendspin-service` file:
+
+```shell
+SENDSPIN_INGEST_HOST=127.0.0.1
+SENDSPIN_INGEST_PORT=8766
+SENDSPIN_HOST=0.0.0.0
+SENDSPIN_PORT=8927
+SENDSPIN_ADVERTISE=true
+SENDSPIN_MAX_BODY_MB=50
+```
+
+`SENDSPIN_MAX_BODY_MB` can adjust the ingest request limit up to the built-in
+100 MiB cap. The service accepts JSON file paths, not uploaded audio data, so
+the default is intentionally conservative.
+
 Target user install:
 
 ```shell
-sudo apt install ./rh-sendspin-service_0.1.0_arm64.deb
+sudo apt install ./sendspin-service_0.1.0_arm64.deb
 ```
 
 Useful endpoints:
@@ -68,6 +84,9 @@ Example playback payload:
 ```
 
 Packaging work is tracked in `Sendspin Service Package PVA.md`.
+The repository also contains a Debian package skeleton under `packaging/deb/`.
+That skeleton defines the planned systemd unit, default config, and maintainer
+script behavior, but it does not yet build the self-contained executable.
 
 ## Settings
 

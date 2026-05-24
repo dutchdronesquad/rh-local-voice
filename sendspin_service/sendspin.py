@@ -31,6 +31,7 @@ _BUFFER_LIMIT_US = 500_000
 _LATE_JOIN_SYNC_INTERVAL_S = 0.1
 _MIN_SCHEDULE_DELAY_S = 0.05
 _SCHEDULED_BUFFER_MARGIN_US = 100_000
+_STARTUP_TIMEOUT_S = 30.0
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,7 @@ class SendSpinServer:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._server: AioSendspinServer | None = None
         self._ready = threading.Event()
+        self._startup_error: BaseException | None = None
         self._thread: threading.Thread | None = None
         self._stream_lock: asyncio.Lock | None = None
         self._stream_group: SendspinGroup | None = None
@@ -117,11 +119,28 @@ class SendSpinServer:
     def start(self) -> None:
         """Start the Sendspin server in a background daemon thread."""
         if self._thread is not None and self._thread.is_alive():
+            if self._server is None:
+                message = "Sendspin server thread is running but not ready"
+                raise RuntimeError(message)
             return
+        self._ready.clear()
+        self._startup_error = None
         self._thread = threading.Thread(
-            target=self._run_loop, daemon=True, name="local_voice_sendspin"
+            target=self._run_loop, daemon=True, name="sendspin-service"
         )
         self._thread.start()
+        if not self._ready.wait(timeout=_STARTUP_TIMEOUT_S):
+            message = (
+                "Sendspin server did not finish startup within "
+                f"{_STARTUP_TIMEOUT_S:.0f}s"
+            )
+            raise RuntimeError(message)
+        if self._startup_error is not None:
+            message = "Sendspin server failed to start"
+            raise RuntimeError(message) from self._startup_error
+        if self._server is None:
+            message = "Sendspin server did not become ready"
+            raise RuntimeError(message)
 
     def play(
         self,
@@ -207,13 +226,19 @@ class SendSpinServer:
         asyncio.set_event_loop(loop)
         self._loop = loop
         try:
-            loop.run_until_complete(self._start_server())
+            try:
+                loop.run_until_complete(self._start_server())
+            except Exception as exc:
+                self._startup_error = exc
+                logger.exception("Sendspin service: Sendspin server startup failed")
+                return
             self._ready.set()
-            loop.run_forever()
-        except Exception:
-            logger.exception("Sendspin service: Sendspin server loop failed")
-            self._ready.set()
+            try:
+                loop.run_forever()
+            except Exception:
+                logger.exception("Sendspin service: Sendspin server loop failed")
         finally:
+            self._ready.set()
             with contextlib.suppress(Exception):
                 loop.run_until_complete(self._close_server())
             self._drain_pending_tasks(loop)
@@ -235,15 +260,23 @@ class SendSpinServer:
     async def _start_server(self) -> None:
         server = AioSendspinServer(
             loop=asyncio.get_running_loop(),
-            server_id="rh-local-voice",
-            server_name="RotorHazard Local Voice",
+            server_id="sendspin-service",
+            server_name="Sendspin Service",
         )
-        await server.start_server(
-            port=self._port,
-            host=self._host,
-            advertise_addresses=None if self._advertise else [],
-            discover_clients=False,
-        )
+        try:
+            await server.start_server(
+                port=self._port,
+                host=self._host,
+                advertise_addresses=None if self._advertise else [],
+                discover_clients=False,
+            )
+        except OSError:
+            logger.exception(
+                "Sendspin service: cannot start Sendspin server on %s:%s",
+                self._host,
+                self._port,
+            )
+            raise
         self._server = server
         self._stream_lock = asyncio.Lock()
         logger.info(

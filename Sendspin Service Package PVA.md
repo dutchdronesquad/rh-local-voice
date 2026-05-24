@@ -25,7 +25,7 @@ RotorHazard plugin
   -> generates/caches TTS WAV files
   -> POSTs playback jobs to http://127.0.0.1:8766
 
-rh-sendspin-service
+sendspin-service
   -> receives playback jobs
   -> owns the Sendspin server/player endpoint on :8927
   -> runs as a systemd service
@@ -37,7 +37,7 @@ Later, cloud output is added as a parallel target:
 
 ```text
 RotorHazard plugin
-  -> local rh-sendspin-service for PA/speakers
+  -> local sendspin-service for PA/speakers
   -> cloud Sendspin service for QR/phone listeners
 ```
 
@@ -52,13 +52,13 @@ The user should not need to understand Python, `uv`, virtualenvs, or package lay
 Local install should look like:
 
 ```shell
-sudo apt install ./rh-sendspin-service_0.1.0_arm64.deb
+sudo apt install ./sendspin-service_0.1.0_arm64.deb
 ```
 
 Then:
 
 ```shell
-sudo systemctl status rh-sendspin-service
+sudo systemctl status sendspin-service
 curl http://127.0.0.1:8766/health
 ```
 
@@ -72,7 +72,7 @@ If the service is missing or stopped, the plugin should show/log a direct messag
 
 ```text
 Sendspin service is not reachable at http://127.0.0.1:8766.
-Install or start rh-sendspin-service.
+Install or start sendspin-service.
 ```
 
 ---
@@ -96,7 +96,7 @@ This is simple, but not ideal for Raspberry Pi users because installed Python ve
 The `.deb` installs a private app directory under:
 
 ```text
-/opt/rh-sendspin-service
+/opt/sendspin-service
 ```
 
 That directory contains the service code plus its own Python environment/dependencies.
@@ -123,7 +123,7 @@ Reasoning:
 - The service becomes a real product component, not a Python setup task.
 - Users should not need to know or care which Python version is installed.
 - Support is simpler when the service package owns its runtime.
-- The install/update UX stays clean: `sudo apt install ./rh-sendspin-service_...deb`.
+- The install/update UX stays clean: `sudo apt install ./sendspin-service_...deb`.
 
 This makes the `.deb` larger, but that is an acceptable trade-off if the install is reliable.
 
@@ -161,8 +161,8 @@ installed size:
 Build at least:
 
 ```text
-rh-sendspin-service_0.1.0_amd64.deb
-rh-sendspin-service_0.1.0_arm64.deb
+sendspin-service_0.1.0_amd64.deb
+sendspin-service_0.1.0_arm64.deb
 ```
 
 Architecture usage:
@@ -181,19 +181,19 @@ Native dependencies must be built/tested per architecture. Packages like `av` ca
 Target package name:
 
 ```text
-rh-sendspin-service
+sendspin-service
 ```
 
 Install layout:
 
 ```text
-/opt/rh-sendspin-service/
-  bin/rh-sendspin-service
+/opt/sendspin-service/
+  bin/sendspin-service
   app/...
 
-/etc/default/rh-sendspin-service
+/etc/default/sendspin-service
 
-/lib/systemd/system/rh-sendspin-service.service
+/lib/systemd/system/sendspin-service.service
 ```
 
 Default config:
@@ -202,26 +202,25 @@ Default config:
 SENDSPIN_INGEST_HOST=127.0.0.1
 SENDSPIN_INGEST_PORT=8766
 SENDSPIN_PORT=8927
-SENDSPIN_MAX_BODY_MB=100
-SENDSPIN_WORK_DIR=/var/lib/rh-sendspin-service
+SENDSPIN_MAX_BODY_MB=50
 ```
 
 Systemd service:
 
 ```ini
 [Unit]
-Description=RH Sendspin Service
+Description=Sendspin Service
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/default/rh-sendspin-service
-ExecStart=/opt/rh-sendspin-service/bin/rh-sendspin-service
+EnvironmentFile=-/etc/default/sendspin-service
+ExecStart=/opt/sendspin-service/bin/sendspin-service
 Restart=on-failure
 RestartSec=2
 DynamicUser=yes
-StateDirectory=rh-sendspin-service
+StateDirectory=sendspin-service
 
 [Install]
 WantedBy=multi-user.target
@@ -230,10 +229,10 @@ WantedBy=multi-user.target
 Post-install behavior:
 
 - `systemctl daemon-reload`
-- `systemctl enable rh-sendspin-service`
+- `systemctl enable sendspin-service`
 - start or restart service
 
-Config in `/etc/default/rh-sendspin-service` should be preserved on upgrade.
+Config in `/etc/default/sendspin-service` should be preserved on upgrade.
 
 ---
 
@@ -244,32 +243,32 @@ Start with GitHub Releases.
 Install:
 
 ```shell
-sudo apt install ./rh-sendspin-service_0.1.0_arm64.deb
+sudo apt install ./sendspin-service_0.1.0_arm64.deb
 ```
 
 Upgrade:
 
 ```shell
-sudo apt install ./rh-sendspin-service_0.2.0_arm64.deb
+sudo apt install ./sendspin-service_0.2.0_arm64.deb
 ```
 
 Remove:
 
 ```shell
-sudo apt remove rh-sendspin-service
+sudo apt remove sendspin-service
 ```
 
 Purge:
 
 ```shell
-sudo apt purge rh-sendspin-service
+sudo apt purge sendspin-service
 ```
 
 Later, an apt repository can be added without changing the package model:
 
 ```shell
 sudo apt update
-sudo apt install rh-sendspin-service
+sudo apt install sendspin-service
 sudo apt upgrade
 ```
 
@@ -376,8 +375,8 @@ packaging/
     postinst
     prerm
     postrm
-    rh-sendspin-service.service
-    rh-sendspin-service.default
+    sendspin-service.service
+    sendspin-service.default
 ```
 
 All Sendspin server/process code should live under `sendspin_service/`.
@@ -438,9 +437,9 @@ Docker workflow:
 Artifacts:
 
 ```text
-rh-sendspin-service_0.1.0_amd64.deb
-rh-sendspin-service_0.1.0_arm64.deb
-ghcr.io/<owner>/rh-sendspin-service:0.1.0
+sendspin-service_0.1.0_amd64.deb
+sendspin-service_0.1.0_arm64.deb
+ghcr.io/<owner>/sendspin-service:0.1.0
 ```
 
 ---
@@ -450,12 +449,12 @@ ghcr.io/<owner>/rh-sendspin-service:0.1.0
 The Ubuntu VM can test the full `.deb` lifecycle for `amd64`.
 
 ```shell
-sudo apt install ./rh-sendspin-service_0.1.0_amd64.deb
-systemctl status rh-sendspin-service
+sudo apt install ./sendspin-service_0.1.0_amd64.deb
+systemctl status sendspin-service
 curl http://127.0.0.1:8766/health
-sudo apt install ./rh-sendspin-service_0.2.0_amd64.deb
-sudo apt remove rh-sendspin-service
-sudo apt purge rh-sendspin-service
+sudo apt install ./sendspin-service_0.2.0_amd64.deb
+sudo apt remove sendspin-service
+sudo apt purge sendspin-service
 ```
 
 Test cases:
@@ -481,7 +480,7 @@ Keep Docker as the primary cloud deployment format.
 docker run \
   -p 8766:8766 \
   -p 8927:8927 \
-  ghcr.io/<owner>/rh-sendspin-service:0.1.0
+  ghcr.io/<owner>/sendspin-service:0.1.0
 ```
 
 Cloud adds:
@@ -589,8 +588,8 @@ Service code checklist:
 - [x] Avoid importing RotorHazard plugin modules from `sendspin_service`.
 - [x] Add `version` to `/health`.
 - [x] Smoke-test `/health`, `/v1/play`, and `/v1/stop` outside the sandbox.
-- [ ] Add clear startup errors for port conflicts on `8766` and `8927`.
-- [ ] Keep ingest body limit configurable with `SENDSPIN_MAX_BODY_MB`.
+- [x] Add clear startup errors for port conflicts on `8766` and `8927`.
+- [x] Keep ingest body limit configurable with `SENDSPIN_MAX_BODY_MB`.
 
 Plugin code checklist:
 
@@ -628,18 +627,18 @@ Goal: build and test the first self-contained `.deb` package on this Ubuntu VM.
 Packaging checklist:
 
 - [ ] Choose bundling tool: PyInstaller, Nuitka, PEX with bundled runtime, or another self-contained approach.
-- [ ] Add package source under `packaging/deb/`.
-- [ ] Add Debian `control`.
-- [ ] Add systemd unit template.
-- [ ] Add `/etc/default/rh-sendspin-service` config template.
-- [ ] Add maintainer scripts: `postinst`, `prerm`, `postrm` as needed.
-- [ ] Install app under `/opt/rh-sendspin-service`.
-- [ ] Install state/work directory under `/var/lib/rh-sendspin-service` or use `StateDirectory`.
+- [x] Add package source under `packaging/deb/`.
+- [x] Add Debian `control`.
+- [x] Add systemd unit template.
+- [x] Add `/etc/default/sendspin-service` config template.
+- [x] Add maintainer scripts: `postinst`, `prerm`, `postrm` as needed.
+- [ ] Install app under `/opt/sendspin-service`.
+- [ ] Install state/work directory under `/var/lib/sendspin-service` or use `StateDirectory`.
 - [ ] Make package install without `uv`, `pip`, or RotorHazard venv.
 
 Runtime checklist:
 
-- [ ] Produce `/opt/rh-sendspin-service/bin/rh-sendspin-service`.
+- [ ] Produce `/opt/sendspin-service/bin/sendspin-service`.
 - [ ] Ensure executable includes or owns the required Python runtime.
 - [ ] Ensure service starts through systemd.
 - [ ] Ensure `/health` returns `ok`, `version`, `sendspin_port`, and `connected_players`.
@@ -654,14 +653,14 @@ Size checklist:
 
 Ubuntu VM lifecycle checklist:
 
-- [ ] `sudo apt install ./rh-sendspin-service_0.1.0_amd64.deb`
-- [ ] `systemctl status rh-sendspin-service`
+- [ ] `sudo apt install ./sendspin-service_0.1.0_amd64.deb`
+- [ ] `systemctl status sendspin-service`
 - [ ] `curl http://127.0.0.1:8766/health`
-- [ ] `sudo apt install ./rh-sendspin-service_0.1.1_amd64.deb`
-- [ ] Confirm `/etc/default/rh-sendspin-service` survives upgrade.
-- [ ] `sudo apt remove rh-sendspin-service`
+- [ ] `sudo apt install ./sendspin-service_0.1.1_amd64.deb`
+- [ ] Confirm `/etc/default/sendspin-service` survives upgrade.
+- [ ] `sudo apt remove sendspin-service`
 - [ ] Confirm service stops and config remains.
-- [ ] `sudo apt purge rh-sendspin-service`
+- [ ] `sudo apt purge sendspin-service`
 - [ ] Confirm config/state cleanup behavior is correct.
 
 Acceptance:
@@ -686,7 +685,7 @@ Goal: produce the Raspberry Pi package and validate it on 64-bit Raspberry Pi OS
 Build checklist:
 
 - [ ] Add `arm64` build path in CI or documented local build.
-- [ ] Build `rh-sendspin-service_0.1.0_arm64.deb`.
+- [ ] Build `sendspin-service_0.1.0_arm64.deb`.
 - [ ] Record `.deb` size and installed size.
 - [ ] Verify native dependencies are built for `arm64`.
 
@@ -807,7 +806,6 @@ Docs:
 ## Open Questions
 
 - Which bundling tool gives the best balance between self-contained runtime, package size, and maintainability?
-- Do we want the package name to be `rh-sendspin-service`, `sendspin-service`, or `local-voice-sendspin-service`?
 - Should install auto-start the service, or only enable it and leave start to the user?
 - How strict should token auth be for localhost-only service installs?
 - Which open PRs must be merged before moving Sendspin implementation out of the plugin package?

@@ -430,22 +430,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    async function handleVisibilityChange() {
-      if (document.visibilityState !== "visible") return;
-      const player = playerRef.current;
-      if (!player) return;
-      // AudioContext is suspended after sleep — tear down and reconnect to reset it
-      playerRef.current = null;
-      player.disconnect("restart");
-      addLog("Woke from sleep — reconnecting audio", "warn");
-      setState("connecting");
-      await connect();
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
-
-  useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 

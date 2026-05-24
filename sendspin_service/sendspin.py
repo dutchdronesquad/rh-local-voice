@@ -40,6 +40,14 @@ class _StreamOptions:
     volume: float = 1.0
 
 
+@dataclass(frozen=True)
+class _WavClip:
+    path: Path
+    audio_format: AudioFormat
+    pcm_data: bytes
+    duration_s: float
+
+
 class _SendspinClock(Protocol):
     def now_us(self) -> int:
         """Return the current Sendspin monotonic clock in microseconds."""
@@ -124,27 +132,34 @@ class SendSpinServer:
     ) -> None:
         """Queue WAV files to connected clients without resetting active playback."""
         if not self._ready.wait(timeout=5.0) or self._loop is None:
-            logger.warning("Local Voice: Sendspin server not yet ready")
+            logger.warning("Sendspin service: Sendspin server not yet ready")
             return
         if self._server is None:
-            logger.warning("Local Voice: Sendspin server failed to start")
+            logger.warning("Sendspin service: Sendspin server failed to start")
             return
         if not self._server.connected_clients:
-            logger.info("Local Voice: no Sendspin clients connected - audio dropped")
+            logger.info(
+                "Sendspin service: no Sendspin clients connected - audio dropped"
+            )
             return
 
-        duration_s = _wav_total_duration(wav_paths)
+        clips = _read_wav_clips(wav_paths)
+        if not clips:
+            logger.warning("Sendspin service: no readable WAV files to play")
+            return
+
+        duration_s = sum(clip.duration_s for clip in clips)
         timeout = max(30.0, duration_s + _INITIAL_PLAYBACK_DELAY_S + _TIMEOUT_MARGIN_S)
         future = asyncio.run_coroutine_threadsafe(
-            self._append_to_stream(wav_paths, expires_at, play_at, duration_s, volume),
+            self._append_to_stream(clips, expires_at, play_at, duration_s, volume),
             self._loop,
         )
         try:
             future.result(timeout=timeout)
         except TimeoutError:
-            logger.warning("Local Voice: Sendspin stream timed out")
+            logger.warning("Sendspin service: Sendspin stream timed out")
         except Exception:
-            logger.exception("Local Voice: Sendspin stream error")
+            logger.exception("Sendspin service: Sendspin stream error")
 
     def stop(self) -> None:
         """Stop current playback and clear scheduled client audio."""
@@ -154,9 +169,31 @@ class SendSpinServer:
         try:
             future.result(timeout=5.0)
         except TimeoutError:
-            logger.warning("Local Voice: Sendspin stop timed out")
+            logger.warning("Sendspin service: Sendspin stop timed out")
         except Exception:
-            logger.exception("Local Voice: Sendspin stop error")
+            logger.exception("Sendspin service: Sendspin stop error")
+
+    def close(self) -> None:
+        """Close client connections, stop the event loop, and join the thread."""
+        loop = self._loop
+        thread = self._thread
+        if loop is None:
+            return
+
+        if loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(self._close_server(), loop)
+            try:
+                future.result(timeout=5.0)
+            except TimeoutError:
+                logger.warning("Sendspin service: Sendspin close timed out")
+            except Exception:
+                logger.exception("Sendspin service: Sendspin close error")
+            loop.call_soon_threadsafe(loop.stop)
+
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5.0)
+            if thread.is_alive():
+                logger.warning("Sendspin service: Sendspin thread did not stop cleanly")
 
     def connected_client_count(self) -> int:
         """Return the number of currently connected Sendspin clients."""
@@ -174,7 +211,7 @@ class SendSpinServer:
             self._ready.set()
             loop.run_forever()
         except Exception:
-            logger.exception("Local Voice: Sendspin server loop failed")
+            logger.exception("Sendspin service: Sendspin server loop failed")
             self._ready.set()
         finally:
             with contextlib.suppress(Exception):
@@ -210,7 +247,7 @@ class SendSpinServer:
         self._server = server
         self._stream_lock = asyncio.Lock()
         logger.info(
-            "Local Voice: Sendspin server listening on %s:%s",
+            "Sendspin service: Sendspin server listening on %s:%s",
             self._host,
             self._port,
         )
@@ -220,6 +257,10 @@ class SendSpinServer:
             await self._stop_stream()
             await self._server.close()
             self._server = None
+        self._stream_lock = None
+        self._stream_group = None
+        self._stream = None
+        self._next_play_start_us = None
 
     async def _stop_stream(self) -> None:
         await self._interrupt_stream(clear_client_audio=True)
@@ -271,7 +312,7 @@ class SendSpinServer:
 
     async def _append_to_stream(
         self,
-        wav_paths: list[Path],
+        clips: list[_WavClip],
         expires_at: float | None,
         play_at: float | None,
         duration_s: float,
@@ -279,17 +320,17 @@ class SendSpinServer:
     ) -> None:
         lock = self._stream_lock
         if lock is None:
-            logger.warning("Local Voice: Sendspin stream lock not ready")
+            logger.warning("Sendspin service: Sendspin stream lock not ready")
             return
         async with lock:
             self._cancel_idle_stop()
             await self._append_to_stream_locked(
-                wav_paths, expires_at, play_at, duration_s, volume
+                clips, expires_at, play_at, duration_s, volume
             )
 
     async def _append_to_stream_locked(
         self,
-        wav_paths: list[Path],
+        clips: list[_WavClip],
         expires_at: float | None,
         play_at: float | None,
         duration_s: float,
@@ -300,7 +341,9 @@ class SendSpinServer:
             return
         clients = server.connected_clients
         if not clients:
-            logger.info("Local Voice: no Sendspin clients connected - audio dropped")
+            logger.info(
+                "Sendspin service: no Sendspin clients connected - audio dropped"
+            )
             return
 
         group, stream = await self._ensure_stream()
@@ -322,7 +365,9 @@ class SendSpinServer:
         elif play_start_us is None or play_start_us <= now_us:
             play_start_us = now_us + int(_INITIAL_PLAYBACK_DELAY_S * 1_000_000)
         if self._would_start_after_expiry(play_start_us, now_us, expires_at):
-            logger.info("Local Voice dropped stale audio before Sendspin scheduling")
+            logger.info(
+                "Sendspin service dropped stale audio before Sendspin scheduling"
+            )
             return
 
         async def sync_clients() -> int:
@@ -331,7 +376,7 @@ class SendSpinServer:
         try:
             play_end_us, streamed_count, client_count = await self._queue_wav_paths(
                 stream,
-                wav_paths,
+                clips,
                 play_start_us=play_start_us,
                 sync_clients=sync_clients,
                 options=stream_options,
@@ -339,13 +384,13 @@ class SendSpinServer:
             client_count = max(client_count, await sync_clients())
             if streamed_count:
                 logger.info(
-                    "Local Voice: queued %d WAV(s) to %d client(s)",
+                    "Sendspin service: queued %d WAV(s) to %d client(s)",
                     streamed_count,
                     client_count,
                 )
                 self._schedule_idle_stop(server.clock, group, play_end_us)
         except StreamStoppedError:
-            logger.info("Local Voice: Sendspin stream stopped")
+            logger.info("Sendspin service: Sendspin stream stopped")
             self._stream = None
             self._stream_group = None
             self._next_play_start_us = None
@@ -353,7 +398,7 @@ class SendSpinServer:
     async def _queue_wav_paths(
         self,
         stream: _PushStream,
-        wav_paths: list[Path],
+        clips: list[_WavClip],
         *,
         play_start_us: int,
         sync_clients: Callable[[], Awaitable[int]],
@@ -363,10 +408,10 @@ class SendSpinServer:
         streamed_count = 0
         client_count = 0
         next_play_start_us: int | None = play_start_us
-        for wav_path in wav_paths:
+        for clip in clips:
             next_play_start_us, clip_end_us, client_count = await _stream_wav(
                 stream,
-                wav_path,
+                clip,
                 play_start_us=next_play_start_us,
                 sync_clients=sync_clients,
                 options=options,
@@ -452,7 +497,7 @@ class SendSpinServer:
             if client.group is not group:
                 await group.add_client(client)
                 logger.info(
-                    "Local Voice: added late Sendspin client to active stream: %s",
+                    "Sendspin service: added late Sendspin client to active stream: %s",
                     client.client_id,
                 )
         return sum(1 for client in group.clients if client.is_connected)
@@ -480,23 +525,21 @@ def _scheduled_buffer_limit_us(
 
 async def _stream_wav(
     stream: _PushStream,
-    wav_path: Path,
+    clip: _WavClip,
     *,
     play_start_us: int | None,
     sync_clients: Callable[[], Awaitable[int]],
     options: _StreamOptions,
 ) -> tuple[int | None, int | None, int]:
     client_count = await sync_clients()
-    clip = _read_wav(wav_path)
-    if clip is None:
-        return play_start_us, None, client_count
-    audio_format, pcm_data = clip
+    audio_format = clip.audio_format
+    pcm_data = clip.pcm_data
     if not pcm_data:
-        logger.warning("Local Voice: empty WAV skipped: %s", wav_path.name)
+        logger.warning("Sendspin service: empty WAV skipped: %s", clip.path.name)
         return play_start_us, None, client_count
     bytes_per_frame = audio_format.channels * (audio_format.bit_depth // 8)
     if len(pcm_data) % bytes_per_frame:
-        logger.warning("Local Voice: misaligned WAV skipped: %s", wav_path.name)
+        logger.warning("Sendspin service: misaligned WAV skipped: %s", clip.path.name)
         return play_start_us, None, client_count
     pcm_data = _scale_pcm(pcm_data, audio_format.bit_depth // 8, options.volume)
     if options.full_clip:
@@ -534,7 +577,7 @@ def _scale_pcm(pcm_data: bytes, sample_width: int, volume: float) -> bytes:
         return _scale_pcm_int24(pcm_data, volume)
     if sample_width == 4:
         return _scale_pcm_int(pcm_data, np.dtype("<i4"), volume)
-    logger.warning("Local Voice: cannot apply volume to %s-byte PCM", sample_width)
+    logger.warning("Sendspin service: cannot apply volume to %s-byte PCM", sample_width)
     return pcm_data
 
 
@@ -567,36 +610,36 @@ def _scale_pcm_int24(pcm_data: bytes, volume: float) -> bytes:
     return packed.tobytes()
 
 
-def _read_wav(wav_path: Path) -> tuple[AudioFormat, bytes] | None:
-    """Read a WAV file as PCM bytes and return its Sendspin audio format."""
+def _read_wav_clips(wav_paths: list[Path]) -> list[_WavClip]:
+    """Read WAV files once and return clips ready for scheduling and streaming."""
+    return [clip for wav_path in wav_paths if (clip := _read_wav(wav_path))]
+
+
+def _read_wav(wav_path: Path) -> _WavClip | None:
+    """Read a WAV file as PCM bytes plus metadata for Sendspin playback."""
     try:
         with wave.open(str(wav_path), "rb") as wav_file:
             sample_width = wav_file.getsampwidth()
             if sample_width not in {2, 3, 4}:
                 logger.warning(
-                    "Local Voice: unsupported WAV sample width %s: %s",
+                    "Sendspin service: unsupported WAV sample width %s: %s",
                     sample_width,
                     wav_path.name,
                 )
                 return None
+            frame_count = wav_file.getnframes()
+            sample_rate = wav_file.getframerate()
             audio_format = AudioFormat(
-                sample_rate=wav_file.getframerate(),
+                sample_rate=sample_rate,
                 bit_depth=sample_width * 8,
                 channels=wav_file.getnchannels(),
             )
-            return audio_format, wav_file.readframes(wav_file.getnframes())
+            return _WavClip(
+                path=wav_path,
+                audio_format=audio_format,
+                pcm_data=wav_file.readframes(frame_count),
+                duration_s=frame_count / sample_rate,
+            )
     except Exception:
-        logger.exception("Local Voice: cannot read WAV: %s", wav_path.name)
+        logger.exception("Sendspin service: cannot read WAV: %s", wav_path.name)
         return None
-
-
-def _wav_total_duration(wav_paths: list[Path]) -> float:
-    """Return the combined duration in seconds of all WAV files."""
-    total = 0.0
-    for wav_path in wav_paths:
-        try:
-            with wave.open(str(wav_path), "rb") as wav_file:
-                total += wav_file.getnframes() / wav_file.getframerate()
-        except Exception:
-            logger.exception("Local Voice: cannot inspect WAV: %s", wav_path.name)
-    return total

@@ -95,6 +95,11 @@ class SendspinService:
         self._sendspin.stop()
         return {"stopped": True, "dropped": dropped}
 
+    def shutdown(self) -> None:
+        """Stop playback and close the underlying Sendspin server."""
+        self._queue.clear()
+        self._sendspin.close()
+
 
 class _RequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler bound to a SendspinService instance."""
@@ -137,7 +142,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
         return urlparse(self.path).path
 
     def _read_json(self) -> dict[str, Any]:
-        content_length = int(self.headers.get("Content-Length", "0"))
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("invalid Content-Length header") from exc
         if content_length <= 0:
             return {}
         if content_length > MAX_REQUEST_BYTES:
@@ -162,6 +170,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
 class _ServiceHTTPServer(ThreadingHTTPServer):
     """HTTP server carrying a SendspinService reference."""
+
+    daemon_threads = True
 
     def __init__(
         self, server_address: tuple[str, int], service: SendspinService
@@ -257,6 +267,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         logger.info("Sendspin service stopping")
     finally:
-        service.stop()
+        service.shutdown()
         server.server_close()
     return 0

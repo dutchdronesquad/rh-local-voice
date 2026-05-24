@@ -37,6 +37,7 @@ class AudioJob:
     text: str = field(compare=False)
     wav_paths: list[Path] = field(compare=False)
     play_at: float | None = field(compare=False, default=None)
+    volume: float = field(compare=False, default=1.0)
 
 
 class AudioQueue:
@@ -48,7 +49,7 @@ class AudioQueue:
     """
 
     def __init__(
-        self, player: Callable[[list[Path], float, float | None], None]
+        self, player: Callable[[list[Path], float, float | None, float], None]
     ) -> None:
         """Start the background worker thread."""
         self._player = player
@@ -58,13 +59,14 @@ class AudioQueue:
         )
         self._thread.start()
 
-    def enqueue(
+    def enqueue(  # noqa: PLR0913
         self,
         text: str,
         wav_paths: list[Path],
         priority: Priority = Priority.NORMAL,
         expiry_sec: float = DEFAULT_EXPIRY_SEC,
         play_at: float | None = None,
+        volume: float = 1.0,
     ) -> None:
         """Add a job to the queue. Returns immediately."""
         job = AudioJob(
@@ -73,6 +75,7 @@ class AudioQueue:
             text=text,
             wav_paths=wav_paths,
             play_at=play_at,
+            volume=volume,
         )
         self._queue.put(job)
         logger.debug("Local Voice queued [%s] '%s'", priority.name, text)
@@ -101,7 +104,7 @@ class AudioQueue:
                     job.priority.name,
                     ", ".join(p.name for p in job.wav_paths),
                 )
-                self._player(job.wav_paths, job.expires_at, job.play_at)
+                self._player(job.wav_paths, job.expires_at, job.play_at, job.volume)
             except Exception:
                 logger.exception("Local Voice worker error for '%s'", job.text)
             finally:

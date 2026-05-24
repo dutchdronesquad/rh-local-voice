@@ -133,7 +133,8 @@ class SendSpinServer:
         duration_s = _wav_total_duration(wav_paths)
         timeout = max(30.0, duration_s + _INITIAL_PLAYBACK_DELAY_S + _TIMEOUT_MARGIN_S)
         future = asyncio.run_coroutine_threadsafe(
-            self._append_to_stream(wav_paths, expires_at, play_at), self._loop
+            self._append_to_stream(wav_paths, expires_at, play_at, duration_s),
+            self._loop,
         )
         try:
             future.result(timeout=timeout)
@@ -259,7 +260,11 @@ class SendSpinServer:
             )
 
     async def _append_to_stream(
-        self, wav_paths: list[Path], expires_at: float | None, play_at: float | None
+        self,
+        wav_paths: list[Path],
+        expires_at: float | None,
+        play_at: float | None,
+        duration_s: float,
     ) -> None:
         lock = self._stream_lock
         if lock is None:
@@ -267,10 +272,16 @@ class SendSpinServer:
             return
         async with lock:
             self._cancel_idle_stop()
-            await self._append_to_stream_locked(wav_paths, expires_at, play_at)
+            await self._append_to_stream_locked(
+                wav_paths, expires_at, play_at, duration_s
+            )
 
     async def _append_to_stream_locked(
-        self, wav_paths: list[Path], expires_at: float | None, play_at: float | None
+        self,
+        wav_paths: list[Path],
+        expires_at: float | None,
+        play_at: float | None,
+        duration_s: float,
     ) -> None:
         server = self._server
         if server is None:
@@ -291,7 +302,7 @@ class SendSpinServer:
             play_start_us = _scheduled_play_start_us(play_at, now_us)
             stream_options = _StreamOptions(
                 max_buffer_us=_scheduled_buffer_limit_us(
-                    play_start_us, now_us, wav_paths
+                    play_start_us, now_us, duration_s
                 ),
                 full_clip=True,
             )
@@ -443,11 +454,11 @@ def _scheduled_play_start_us(play_at: float, now_us: int) -> int:
 
 
 def _scheduled_buffer_limit_us(
-    play_start_us: int, now_us: int, wav_paths: list[Path]
+    play_start_us: int, now_us: int, duration_s: float
 ) -> int:
     """Allow future scheduled clips to be fully queued before playback starts."""
     scheduled_delay_us = max(0, play_start_us - now_us)
-    duration_us = int(_wav_total_duration(wav_paths) * 1_000_000)
+    duration_us = int(duration_s * 1_000_000)
     return max(
         _BUFFER_LIMIT_US,
         scheduled_delay_us + duration_us + _SCHEDULED_BUFFER_MARGIN_US,
@@ -467,6 +478,9 @@ async def _stream_wav(
     if clip is None:
         return play_start_us, None, client_count
     audio_format, pcm_data = clip
+    if not pcm_data:
+        logger.warning("Local Voice: empty WAV skipped: %s", wav_path.name)
+        return play_start_us, None, client_count
     bytes_per_frame = audio_format.channels * (audio_format.bit_depth // 8)
     if options.full_clip:
         chunk_bytes = len(pcm_data)

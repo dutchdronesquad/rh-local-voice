@@ -487,8 +487,11 @@ async def _stream_wav(
     if not pcm_data:
         logger.warning("Local Voice: empty WAV skipped: %s", wav_path.name)
         return play_start_us, None, client_count
-    pcm_data = _scale_pcm(pcm_data, audio_format.bit_depth // 8, options.volume)
     bytes_per_frame = audio_format.channels * (audio_format.bit_depth // 8)
+    if len(pcm_data) % bytes_per_frame:
+        logger.warning("Local Voice: misaligned WAV skipped: %s", wav_path.name)
+        return play_start_us, None, client_count
+    pcm_data = _scale_pcm(pcm_data, audio_format.bit_depth // 8, options.volume)
     if options.full_clip:
         chunk_bytes = len(pcm_data)
     else:
@@ -514,7 +517,7 @@ async def _stream_wav(
 def _scale_pcm(pcm_data: bytes, sample_width: int, volume: float) -> bytes:
     """Apply linear gain to PCM bytes without changing cached WAV files."""
     volume = max(0.0, min(1.0, volume))
-    if volume >= 0.999:
+    if volume == 1.0:
         return pcm_data
     if volume <= 0.0:
         return bytes(len(pcm_data))
@@ -531,7 +534,9 @@ def _scale_pcm(pcm_data: bytes, sample_width: int, volume: float) -> bytes:
 def _scale_pcm_int(pcm_data: bytes, dtype: np.dtype, volume: float) -> bytes:
     samples = np.frombuffer(pcm_data, dtype=dtype)
     info = np.iinfo(dtype)
-    scaled = np.clip(samples.astype(np.float64) * volume, info.min, info.max)
+    scaled = samples.astype(np.float32)
+    np.multiply(scaled, volume, out=scaled)
+    np.clip(scaled, info.min, info.max, out=scaled)
     return scaled.astype(dtype).tobytes()
 
 
@@ -543,9 +548,10 @@ def _scale_pcm_int24(pcm_data: bytes, volume: float) -> bytes:
         | (frames[:, 2].astype(np.int32) << 16)
     )
     samples = np.where(samples & 0x800000, samples - 0x1000000, samples)
-    scaled = np.clip(samples.astype(np.float64) * volume, -0x800000, 0x7FFFFF).astype(
-        np.int32
-    )
+    scaled = samples.astype(np.float32)
+    np.multiply(scaled, volume, out=scaled)
+    np.clip(scaled, -0x800000, 0x7FFFFF, out=scaled)
+    scaled = scaled.astype(np.int32)
     packed = np.empty((scaled.size, 3), dtype=np.uint8)
     unsigned = scaled & 0xFFFFFF
     packed[:, 0] = unsigned & 0xFF

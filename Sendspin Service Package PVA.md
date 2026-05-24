@@ -304,9 +304,11 @@ The plugin can use this later to warn about old service versions.
 
 ## Plugin Simplification
 
-Remove the internal/external local mode choice from the plugin.
+Remove the internal/external local mode choice from the product model, but do
+not delete the internal implementation until the service package has shipped and
+been validated on `amd64` and `arm64`.
 
-Remove:
+Eventually remove:
 
 - `Sendspin local mode`
 - `Internal server`
@@ -315,6 +317,16 @@ Remove:
 - plugin-managed `SendSpinServer`
 - plugin port preflight for `8927`
 - live switching between internal/external modes
+
+Migration rule:
+
+- Internal Sendspin may remain in code as a hidden/legacy fallback while the
+  package is being built and tested.
+- Internal Sendspin should not be the default or recommended path.
+- Internal Sendspin should only be removed after the packaged service has passed
+  the Ubuntu VM lifecycle tests and Raspberry Pi `arm64` install tests.
+- Until removal, keep the internal path isolated so new service work does not
+  add more plugin-side `aiosendspin` behavior.
 
 Keep:
 
@@ -511,12 +523,14 @@ Docs:
 
 ### Phase 1 — Product decision cleanup
 
-Goal: remove the internal/external choice from the product model and make the local service the only local playback path.
+Goal: make the local service the preferred local playback path while keeping
+the internal implementation available as a temporary legacy fallback.
 
 Plugin checklist:
 
 - [ ] Remove **Sendspin local mode** from the UI.
 - [ ] Remove **Internal server** and **Disabled** local mode values.
+- [ ] If internal fallback is still needed, hide it behind an explicit legacy/dev flag instead of normal UI.
 - [ ] Rename **External Sendspin URL** to **Sendspin service URL**.
 - [ ] Rename **External Sendspin timeout** to **Sendspin service timeout**.
 - [ ] Default service URL to `http://127.0.0.1:8766`.
@@ -526,10 +540,9 @@ Plugin checklist:
 
 Code cleanup checklist:
 
-- [ ] Remove `InternalSendspinOutput`.
-- [ ] Remove plugin-side port preflight for `8927`.
-- [ ] Remove plugin-managed `SendSpinServer` lifecycle.
-- [ ] Remove live switching between internal/external modes.
+- [ ] Keep `InternalSendspinOutput` only as a temporary hidden/legacy fallback.
+- [ ] Avoid starting internal Sendspin during RotorHazard startup.
+- [ ] Avoid live switching between internal/external modes in normal user flows.
 - [ ] Keep only the HTTP output client for local service playback.
 - [ ] Keep a simple disabled/no-op path only if needed when plugin audio is disabled.
 
@@ -546,6 +559,14 @@ Docs:
 - [ ] Update `docs/usage.md` to describe service-only local playback.
 - [ ] Update `Local Voice Assistant Plugin PVA.md` to mark internal server as legacy/superseded.
 - [ ] Update screenshots or setting names if screenshots are added later.
+
+Internal removal gate:
+
+- [ ] `amd64` `.deb` install/upgrade/remove/purge lifecycle has passed.
+- [ ] `arm64` `.deb` install and race-flow test has passed on Raspberry Pi.
+- [ ] Service failure messages are clear enough for normal users.
+- [ ] Open PRs touching the old plugin `sendspin.py` have been resolved.
+- [ ] Only after these are true, remove plugin-managed internal Sendspin code.
 
 ---
 

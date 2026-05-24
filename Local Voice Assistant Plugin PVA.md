@@ -149,6 +149,11 @@ mode-switching complexity, competes for port `8927`, and couples Sendspin
 restarts to RotorHazard restarts. This path is superseded by the packaged local
 Sendspin service plan.
 
+Migration note: do not remove the internal implementation immediately. Keep it
+as a hidden/legacy fallback until the packaged service has passed Ubuntu
+`amd64` lifecycle tests, Raspberry Pi `arm64` install/race-flow tests, and open
+PRs touching `sendspin.py` have been resolved.
+
 ```
 RotorHazard plugin → internal Sendspin server → Sendspin player
 ```
@@ -620,6 +625,7 @@ and expiry. Sendspin services are output targets.
 #### Local Sendspin service on Raspberry Pi
 - [x] Provide `sendspin.service` systemd unit file with the repo
 - [ ] Remove plugin setting: Sendspin local mode (Internal server / External server / Disabled)
+- [ ] Keep internal Sendspin as hidden/legacy fallback until service package release criteria are met
 - [ ] Plugin setting: Sendspin service URL (default: `http://127.0.0.1:8766`)
 - [ ] Plugin health check pings service status endpoint
 - [ ] Local service works as a self-contained `.deb` package

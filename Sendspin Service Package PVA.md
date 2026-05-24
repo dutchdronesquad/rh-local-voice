@@ -202,8 +202,7 @@ Default config:
 SENDSPIN_INGEST_HOST=127.0.0.1
 SENDSPIN_INGEST_PORT=8766
 SENDSPIN_PORT=8927
-SENDSPIN_MAX_BODY_MB=100
-SENDSPIN_WORK_DIR=/var/lib/sendspin-service
+SENDSPIN_MAX_BODY_MB=50
 ```
 
 Systemd service:
@@ -216,7 +215,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/default/sendspin-service
+EnvironmentFile=-/etc/default/sendspin-service
 ExecStart=/opt/sendspin-service/bin/sendspin-service
 Restart=on-failure
 RestartSec=2

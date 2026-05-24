@@ -20,4 +20,4 @@ Target package behavior:
 - start and enable the service after install
 - preserve `/etc/default/sendspin-service` during upgrades
 - stop the service on remove
-- remove config and state on purge
+- remove config and state on purge, including the DynamicUser private state path

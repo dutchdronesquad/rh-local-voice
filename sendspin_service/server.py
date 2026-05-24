@@ -27,7 +27,8 @@ DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8766
 DEFAULT_SENDSPIN_HOST = "0.0.0.0"  # noqa: S104
 DEFAULT_SENDSPIN_PORT = 8927
-DEFAULT_MAX_BODY_MB = 100
+DEFAULT_MAX_BODY_MB = 50
+MAX_BODY_MB_LIMIT = 100
 BYTES_PER_MIB = 1024 * 1024
 
 
@@ -251,6 +252,16 @@ def _env_bool(name: str, *, default: bool) -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _body_limit_mb(value: int) -> int:
+    if value < 1:
+        logger.warning("Clamping SENDSPIN_MAX_BODY_MB to 1 MiB")
+        return 1
+    if value > MAX_BODY_MB_LIMIT:
+        logger.warning("Clamping SENDSPIN_MAX_BODY_MB to %d MiB", MAX_BODY_MB_LIMIT)
+        return MAX_BODY_MB_LIMIT
+    return value
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> ServiceConfig:
     parser = argparse.ArgumentParser(description="Run the Sendspin playback service")
     parser.add_argument(
@@ -289,7 +300,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> ServiceConfig:
         help="Maximum JSON request body size in MiB",
     )
     args = parser.parse_args(argv)
-    max_body_mb = max(1, args.max_body_mb)
+    max_body_mb = _body_limit_mb(args.max_body_mb)
     return ServiceConfig(
         api_host=args.host,
         api_port=args.port,
@@ -307,10 +318,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = _parse_args(argv)
+    logger.info(
+        "Sendspin service request body limit: %d MiB",
+        config.max_body_bytes // BYTES_PER_MIB,
+    )
     service = SendspinService(config)
-    service.start()
     try:
+        service.start()
         server = _ServiceHTTPServer((config.api_host, config.api_port), service)
+    except RuntimeError:
+        logger.exception("Sendspin service startup failed")
+        service.shutdown()
+        return 1
     except OSError:
         logger.exception(
             "Sendspin service cannot listen on http://%s:%s",

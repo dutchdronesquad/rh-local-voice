@@ -51,8 +51,12 @@ SENDSPIN_INGEST_PORT=8766
 SENDSPIN_HOST=0.0.0.0
 SENDSPIN_PORT=8927
 SENDSPIN_ADVERTISE=true
-SENDSPIN_MAX_BODY_MB=100
+SENDSPIN_MAX_BODY_MB=50
 ```
+
+`SENDSPIN_MAX_BODY_MB` can adjust the ingest request limit up to the built-in
+100 MiB cap. The service accepts JSON file paths, not uploaded audio data, so
+the default is intentionally conservative.
 
 Target user install:
 

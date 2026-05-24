@@ -27,6 +27,7 @@ _INITIAL_PLAYBACK_DELAY_S = 0.25
 _TIMEOUT_MARGIN_S = 10
 _BUFFER_LIMIT_US = 500_000
 _LATE_JOIN_SYNC_INTERVAL_S = 0.1
+_MIN_SCHEDULE_DELAY_S = 0.05
 
 
 class _SendspinClock(Protocol):
@@ -104,7 +105,12 @@ class SendSpinServer:
         )
         self._thread.start()
 
-    def play(self, wav_paths: list[Path], expires_at: float | None = None) -> None:
+    def play(
+        self,
+        wav_paths: list[Path],
+        expires_at: float | None = None,
+        play_at: float | None = None,
+    ) -> None:
         """Queue WAV files to connected clients without resetting active playback."""
         if not self._ready.wait(timeout=5.0) or self._loop is None:
             logger.warning("Local Voice: Sendspin server not yet ready")
@@ -119,7 +125,7 @@ class SendSpinServer:
         duration_s = _wav_total_duration(wav_paths)
         timeout = max(30.0, duration_s + _INITIAL_PLAYBACK_DELAY_S + _TIMEOUT_MARGIN_S)
         future = asyncio.run_coroutine_threadsafe(
-            self._append_to_stream(wav_paths, expires_at), self._loop
+            self._append_to_stream(wav_paths, expires_at, play_at), self._loop
         )
         try:
             future.result(timeout=timeout)
@@ -245,7 +251,7 @@ class SendSpinServer:
             )
 
     async def _append_to_stream(
-        self, wav_paths: list[Path], expires_at: float | None
+        self, wav_paths: list[Path], expires_at: float | None, play_at: float | None
     ) -> None:
         lock = self._stream_lock
         if lock is None:
@@ -253,10 +259,10 @@ class SendSpinServer:
             return
         async with lock:
             self._cancel_idle_stop()
-            await self._append_to_stream_locked(wav_paths, expires_at)
+            await self._append_to_stream_locked(wav_paths, expires_at, play_at)
 
     async def _append_to_stream_locked(
-        self, wav_paths: list[Path], expires_at: float | None
+        self, wav_paths: list[Path], expires_at: float | None, play_at: float | None
     ) -> None:
         server = self._server
         if server is None:
@@ -273,7 +279,9 @@ class SendSpinServer:
 
         play_start_us = self._next_play_start_us
         now_us = server.clock.now_us()
-        if play_start_us is None or play_start_us <= now_us:
+        if play_at is not None:
+            play_start_us = _scheduled_play_start_us(play_at, now_us)
+        elif play_start_us is None or play_start_us <= now_us:
             play_start_us = now_us + int(_INITIAL_PLAYBACK_DELAY_S * 1_000_000)
         if self._would_start_after_expiry(play_start_us, now_us, expires_at):
             logger.info("Local Voice dropped stale audio before Sendspin scheduling")
@@ -409,6 +417,14 @@ class SendSpinServer:
                     client.client_id,
                 )
         return sum(1 for client in group.clients if client.is_connected)
+
+
+def _scheduled_play_start_us(play_at: float, now_us: int) -> int:
+    """Map a process-local monotonic target time to the Sendspin clock."""
+    clock_offset_us = now_us - int(time.monotonic() * 1_000_000)
+    requested_start_us = int(play_at * 1_000_000) + clock_offset_us
+    minimum_start_us = now_us + int(_MIN_SCHEDULE_DELAY_S * 1_000_000)
+    return max(requested_start_us, minimum_start_us)
 
 
 async def _stream_wav(

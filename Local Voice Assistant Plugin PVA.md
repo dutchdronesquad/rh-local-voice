@@ -41,7 +41,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Add a post-plugin-load event such as `Evt.PLUGINS_READY` or `Evt.SETTINGS_READY`, fired after plugin loading and registered setting defaults are initialized. This gives plugins a stable point to read options and start background work.
 
-**Status: Post-MVP / deferred.** Local Voice does not automatically build startup pre-cache until RH exposes a reliable lifecycle event. Operators can use **Rebuild pre-cache** after startup.
+**Status: Post-MVP / deferred.** Local Voice does not automatically build startup pre-cache until RH exposes a reliable lifecycle event. Operators can use **Rebuild pre-cache** after first setup or voice model/settings changes.
 
 ---
 
@@ -51,7 +51,9 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Add `Evt.RACE_CLOCK_WARNING` fired by the RH race thread at configurable thresholds (e.g. 60s, 30s, 10s remaining), with payload `{'seconds_remaining': int}`. This would let any plugin — not just audio plugins — react to race time milestones without reimplementing a parallel timer.
 
-**Status: Post-MVP / deferred.** Not implemented in the plugin until RH provides a proper server-side event. Race clock callouts are skipped for now.
+**Status: Implemented on the upstream race-clock-warning branch.** `Evt.RACE_CLOCK_WARNING` added to RotorHazard (`eventmanager.py`, `RHRace.race_expire_thread`). Plugin synthesizes callouts at 60s ("One minute"), 30s ("30 seconds"), and 10s ("10 seconds").
+
+**Open timing note:** The RotorHazard PR is still draft. Before finalizing the clock-warning contract, first merge the upstream stage-tone work and then re-evaluate whether `RACE_CLOCK_WARNING` should behave like a scheduled output event. For exact last-5-second beeps, audio backends may need the event before the threshold moment, with `scheduled_at_monotonic` indicating the true playback time. Keep this unresolved until the stage-tone event semantics are settled.
 
 ---
 
@@ -338,6 +340,7 @@ RotorHazard server
         │     Evt.HEAT_SET, CROSSING_ENTER/EXIT
         ├── Flt.EMIT_PHONETIC_DATA  (lap data snapshots)
         ├── Flt.EMIT_PHONETIC_TEXT  (server-originated text callouts)
+        ├── services/clock_warnings.py (race-clock warning phrases)
         ├── services/lap_callouts.py (lap callout segment planning)
         ├── services/precache.py    (manual pre-cache rebuilds)
         ├── services/schedule.py    (scheduled-race countdown timers)
@@ -382,7 +385,7 @@ Cache path: `{model_name}/{sha1(normalized_text)}_{speed}_{noise}_{noise_w}.wav`
 Current heat-load behavior:
 - Clears ephemeral lap-time WAV files for the selected model.
 - Pre-cache generation is manual via **Rebuild pre-cache** until RH provides a reliable plugin-ready lifecycle event.
-- Rebuild pre-cache generates schedule phrases, current-heat pilot-name segments, and lap-number segments under `tts/<model>/precache/`.
+- Rebuild pre-cache generates race-clock warning phrases, schedule phrases, current-heat pilot-name segments, and lap-number segments under `tts/<model>/precache/`.
 
 ---
 
@@ -405,7 +408,7 @@ MVP plugin audio profile mirrors the familiar RH categories that can be implemen
 - Voice volume, beep volume, speech speed, voice model
 
 Post-MVP profile additions:
-- Race clock callouts
+- Race clock callouts ✓
 - Staging tone beeps
 - Race tied / overtime callouts
 - Race leader callouts
@@ -593,7 +596,7 @@ and expiry. Sendspin services are output targets.
 
 #### Deferred RH / RHAPI-dependent callouts
 - [ ] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
-- [ ] Race clock callouts via upstream `Evt.RACE_CLOCK_WARNING`
+- [x] Race clock callouts via upstream `Evt.RACE_CLOCK_WARNING`
 - [ ] Arm sequence countdown beeps via upstream `Evt.RACE_ARM_TONE`
 - [ ] Last-5-seconds countdown beeps (one `stage.wav` per second for the final 5s) and `buzzer.wav` at race end — mirrors browser behaviour; needs per-second `Evt.RACE_CLOCK_WARNING` thresholds (5, 4, 3, 2, 1) or a dedicated end-of-race countdown mechanism
 - [ ] Scheduled race start callouts ("Next race begins in 30 seconds" etc.)

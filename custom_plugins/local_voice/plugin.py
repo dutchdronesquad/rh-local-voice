@@ -33,6 +33,8 @@ from .const import (
 )
 from .piper import PiperSynthesizer, SynthesisParams, SynthesisResult
 from .sendspin import SendSpinServer
+from .services import schedule
+from .services.clock_warnings import ClockWarningCallouts
 from .services.lap_callouts import LapCalloutSegments
 from .services.precache import PrecacheManager
 from .services.schedule import ScheduleCalloutManager
@@ -91,12 +93,16 @@ class LocalVoicePlugin:
             enqueue_callout=self._enqueue_schedule_callout,
             phrase_for=self._schedule_phrase_for_settings,
         )
+        self._clock_warnings = ClockWarningCallouts(
+            locale_for_model=self._locale_for_model
+        )
         self._lap_callouts = LapCalloutSegments(locale_for_model=self._locale_for_model)
         self._precache = PrecacheManager(
             tts=self._tts,
             lap_callouts=self._lap_callouts,
             synth_pool=self._synth_pool,
             prepare_model=self._prepare_model,
+            clock_warnings=self._clock_warnings,
             schedule_phrase=self._schedule_phrase,
             pilot_names_for_heat=self._pilot_names_for_heat,
             heat_name_for_id=self._heat_name_for_id,
@@ -127,6 +133,11 @@ class LocalVoicePlugin:
             Evt.DATABASE_RESET,
             self._on_event_cache_reset,
             name="local_voice_database_reset",
+        )
+        self._rhapi.events.on(
+            Evt.RACE_CLOCK_WARNING,
+            self._on_clock_warning,
+            name="local_voice_clock_warning",
         )
         self._rhapi.events.on(
             Evt.RACE_SCHEDULE,
@@ -233,6 +244,24 @@ class LocalVoicePlugin:
         heat_id = self._rhapi.race.heat
         return heat_id or None
 
+    def _on_clock_warning(self, args: dict[str, Any]) -> None:
+        """Synthesize and enqueue a race clock warning callout."""
+        if not self._enabled():
+            return
+        seconds = args.get("seconds_remaining")
+        if seconds is None:
+            return
+        settings = self._settings()
+        text = self._clock_warnings.phrase(seconds, settings.model_name)
+        self._synth_pool.submit(
+            self._enqueue,
+            text,
+            Priority.HIGH,
+            time.monotonic() + 8.0,
+            self._clock_warnings.subdir,
+            settings,
+        )
+
     def _on_event_cache_reset(self, _args: dict[str, Any]) -> None:
         """Wipe event-specific WAVs when RotorHazard starts a new data set."""
         self._precache.cancel()
@@ -263,7 +292,7 @@ class LocalVoicePlugin:
             phrase,
             Priority.HIGH,
             time.monotonic() + 8.0,
-            "precache/schedule",
+            schedule.PRECACHE_SUBDIR,
             settings,
         )
 
@@ -395,6 +424,7 @@ class LocalVoicePlugin:
             self._prepared_settings = settings
 
     def _pilot_names_for_heat(self, heat_id: int) -> list[str]:
+        """Return phonetic pilot names for all pilots in the heat."""
         slots = self._rhapi.db.slots_by_heat(heat_id)
         pilot_names: list[str] = []
         for slot in slots:

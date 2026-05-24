@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import json
 import logging
+import os
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,7 +27,8 @@ DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8766
 DEFAULT_SENDSPIN_HOST = "0.0.0.0"  # noqa: S104
 DEFAULT_SENDSPIN_PORT = 8927
-MAX_REQUEST_BYTES = 1_000_000
+DEFAULT_MAX_BODY_MB = 100
+BYTES_PER_MIB = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,7 @@ class ServiceConfig:
     sendspin_host: str = DEFAULT_SENDSPIN_HOST
     sendspin_port: int = DEFAULT_SENDSPIN_PORT
     advertise: bool = True
+    max_body_bytes: int = DEFAULT_MAX_BODY_MB * BYTES_PER_MIB
 
 
 class SendspinService:
@@ -59,15 +62,24 @@ class SendspinService:
 
     def health(self) -> dict[str, Any]:
         """Return service health metadata."""
+        connected_clients = self._sendspin.connected_client_count()
         return {
+            "ok": True,
             "status": "ok",
             "version": SERVICE_VERSION,
             "api_host": self._config.api_host,
             "api_port": self._config.api_port,
             "sendspin_host": self._config.sendspin_host,
             "sendspin_port": self._config.sendspin_port,
-            "connected_clients": self._sendspin.connected_client_count(),
+            "connected_clients": connected_clients,
+            "connected_players": connected_clients,
+            "max_body_bytes": self._config.max_body_bytes,
         }
+
+    @property
+    def max_body_bytes(self) -> int:
+        """Return the configured maximum HTTP request body size."""
+        return self._config.max_body_bytes
 
     def play(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Queue a playback request from a JSON payload."""
@@ -148,7 +160,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             raise ValueError("invalid Content-Length header") from exc
         if content_length <= 0:
             return {}
-        if content_length > MAX_REQUEST_BYTES:
+        if content_length > self.server.service.max_body_bytes:
             raise ValueError("request body too large")
         data = self.rfile.read(content_length)
         try:
@@ -215,35 +227,76 @@ def _clamped_float(
     return max(minimum, min(maximum, _float_value(value, default)))
 
 
+def _env_str(name: str, default: str) -> str:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip()
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    with contextlib.suppress(ValueError):
+        return int(value)
+    logger.warning("Ignoring invalid integer value for %s: %r", name, value)
+    return default
+
+
+def _env_bool(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> ServiceConfig:
     parser = argparse.ArgumentParser(description="Run the Sendspin playback service")
-    parser.add_argument("--host", default=DEFAULT_API_HOST, help="HTTP API host")
     parser.add_argument(
-        "--port", default=DEFAULT_API_PORT, type=int, help="HTTP API port"
+        "--host",
+        default=_env_str("SENDSPIN_INGEST_HOST", DEFAULT_API_HOST),
+        help="HTTP API host",
+    )
+    parser.add_argument(
+        "--port",
+        default=_env_int("SENDSPIN_INGEST_PORT", DEFAULT_API_PORT),
+        type=int,
+        help="HTTP API port",
     )
     parser.add_argument(
         "--sendspin-host",
-        default=DEFAULT_SENDSPIN_HOST,
+        default=_env_str("SENDSPIN_HOST", DEFAULT_SENDSPIN_HOST),
         help="Sendspin WebSocket host",
     )
     parser.add_argument(
         "--sendspin-port",
-        default=DEFAULT_SENDSPIN_PORT,
+        default=_env_int("SENDSPIN_PORT", DEFAULT_SENDSPIN_PORT),
         type=int,
         help="Sendspin WebSocket port",
     )
     parser.add_argument(
         "--no-advertise",
-        action="store_true",
+        action="store_false",
+        default=_env_bool("SENDSPIN_ADVERTISE", default=True),
+        dest="advertise",
         help="Disable Sendspin address advertising",
     )
+    parser.add_argument(
+        "--max-body-mb",
+        default=_env_int("SENDSPIN_MAX_BODY_MB", DEFAULT_MAX_BODY_MB),
+        type=int,
+        help="Maximum JSON request body size in MiB",
+    )
     args = parser.parse_args(argv)
+    max_body_mb = max(1, args.max_body_mb)
     return ServiceConfig(
         api_host=args.host,
         api_port=args.port,
         sendspin_host=args.sendspin_host,
         sendspin_port=args.sendspin_port,
-        advertise=not args.no_advertise,
+        advertise=args.advertise,
+        max_body_bytes=max_body_mb * BYTES_PER_MIB,
     )
 
 
@@ -256,7 +309,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     config = _parse_args(argv)
     service = SendspinService(config)
     service.start()
-    server = _ServiceHTTPServer((config.api_host, config.api_port), service)
+    try:
+        server = _ServiceHTTPServer((config.api_host, config.api_port), service)
+    except OSError:
+        logger.exception(
+            "Sendspin service cannot listen on http://%s:%s",
+            config.api_host,
+            config.api_port,
+        )
+        service.shutdown()
+        return 1
     logger.info(
         "Sendspin service listening on http://%s:%s",
         config.api_host,

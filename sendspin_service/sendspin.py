@@ -118,6 +118,7 @@ class SendSpinServer:
         """Start the Sendspin server in a background daemon thread."""
         if self._thread is not None and self._thread.is_alive():
             return
+        self._ready.clear()
         self._thread = threading.Thread(
             target=self._run_loop, daemon=True, name="local_voice_sendspin"
         )
@@ -235,15 +236,23 @@ class SendSpinServer:
     async def _start_server(self) -> None:
         server = AioSendspinServer(
             loop=asyncio.get_running_loop(),
-            server_id="rh-local-voice",
-            server_name="RotorHazard Local Voice",
+            server_id="sendspin-service",
+            server_name="Sendspin Service",
         )
-        await server.start_server(
-            port=self._port,
-            host=self._host,
-            advertise_addresses=None if self._advertise else [],
-            discover_clients=False,
-        )
+        try:
+            await server.start_server(
+                port=self._port,
+                host=self._host,
+                advertise_addresses=None if self._advertise else [],
+                discover_clients=False,
+            )
+        except OSError:
+            logger.exception(
+                "Sendspin service: cannot start Sendspin server on %s:%s",
+                self._host,
+                self._port,
+            )
+            raise
         self._server = server
         self._stream_lock = asyncio.Lock()
         logger.info(

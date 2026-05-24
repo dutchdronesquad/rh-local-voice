@@ -6,6 +6,8 @@ import hashlib
 import io
 import json
 import logging
+import os
+import tempfile
 import threading
 import time
 import unicodedata
@@ -13,6 +15,7 @@ import urllib.error
 import urllib.request
 import wave
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import onnxruntime
@@ -23,7 +26,6 @@ from .const import VOICE_MODELS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,8 @@ class PiperSynthesizer:
         self._voice: Any | None = None
         self._loaded_model: str | None = None
         self._voice_lock = threading.Lock()
+        self._cache_locks: dict[tuple[str, str, str], threading.Lock] = {}
+        self._cache_locks_lock = threading.Lock()
 
         self._model_dir.mkdir(parents=True, exist_ok=True)
         self._tts_dir.mkdir(parents=True, exist_ok=True)
@@ -98,40 +102,47 @@ class PiperSynthesizer:
         wav_path = model_tts_dir / f"{cache_key}.wav"
         started = time.perf_counter()
 
-        if wav_path.exists() and self.valid_wav(wav_path):
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            logger.info("Local Voice cache hit for '%s': %s", normalized_text, wav_path)
-            return SynthesisResult(
-                text=normalized_text,
-                wav_path=wav_path,
-                duration_ms=duration_ms,
-                cache_hit=True,
-            )
-
-        voice = self._load_voice(model_name)
-        if voice is None:
-            return None
-
-        try:
-            buf = io.BytesIO()
-            with wave.open(buf, "wb") as wav_file:
-                voice.synthesize_wav(
-                    normalized_text, wav_file, syn_config=self._make_syn_config(params)
+        cache_lock = self._cache_lock_for(model_name, subdir, cache_key)
+        with cache_lock:
+            if wav_path.exists() and self.valid_wav(wav_path):
+                duration_ms = int((time.perf_counter() - started) * 1000)
+                logger.debug(
+                    "Local Voice cache hit for '%s': %s", normalized_text, wav_path
                 )
-            _prepend_silence(buf, wav_path)
-        except Exception as exc:
-            wav_path.unlink(missing_ok=True)
-            self._set_status(f"Synthesis failed: {exc}")
-            logger.exception("Local Voice synthesis failed for '%s'", normalized_text)
-            return None
+                return SynthesisResult(
+                    text=normalized_text,
+                    wav_path=wav_path,
+                    duration_ms=duration_ms,
+                    cache_hit=True,
+                )
+
+            voice = self._load_voice(model_name)
+            if voice is None:
+                return None
+
+            tmp_path: Path | None = None
+            try:
+                buf = io.BytesIO()
+                with wave.open(buf, "wb") as wav_file:
+                    voice.synthesize_wav(
+                        normalized_text,
+                        wav_file,
+                        syn_config=self._make_syn_config(params),
+                    )
+                tmp_path = self._temp_wav_path(model_tts_dir)
+                _prepend_silence(buf, tmp_path)
+                tmp_path.replace(wav_path)
+            except Exception as exc:
+                if tmp_path is not None:
+                    tmp_path.unlink(missing_ok=True)
+                wav_path.unlink(missing_ok=True)
+                self._set_status(f"Synthesis failed: {exc}")
+                logger.exception(
+                    "Local Voice synthesis failed for '%s'", normalized_text
+                )
+                return None
 
         duration_ms = int((time.perf_counter() - started) * 1000)
-        logger.info(
-            "Local Voice synthesized '%s' to %s in %sms",
-            normalized_text,
-            wav_path,
-            duration_ms,
-        )
         return SynthesisResult(
             text=normalized_text,
             wav_path=wav_path,
@@ -160,33 +171,30 @@ class PiperSynthesizer:
         cached_files = sum(1 for path in self._tts_dir.rglob("*.wav") if path.is_file())
         return f"{self._tts_dir} | {cached_files} cached WAV files"
 
-    def warmup(self, model_name: str, params: SynthesisParams) -> None:
-        """Load the model and run a short synthesis to warm up ONNX Runtime."""
+    def prepare_model(self, model_name: str, params: SynthesisParams) -> bool:
+        """Load the model and verify synthesis with the current parameters."""
         voice = self._load_voice(model_name)
         if voice is None:
-            return
+            return False
         try:
             buf = io.BytesIO()
             with wave.open(buf, "wb") as wav_file:
                 voice.synthesize_wav(
                     "ready", wav_file, syn_config=self._make_syn_config(params)
                 )
-            logger.info("Local Voice: model warm-up complete for %s", model_name)
         except Exception:
-            logger.exception("Local Voice: model warm-up failed for %s", model_name)
+            logger.exception("Local Voice: model preparation failed for %s", model_name)
+            return False
+        else:
+            logger.info("Local Voice: model prepared for %s", model_name)
+            return True
 
     def _load_voice(self, model_name: str) -> Any | None:
-        """Load the selected Piper model once, downloading files if necessary.
-
-        The ONNX session is created with ``intra_op_num_threads=1`` so that
-        multiple synthesis workers can each occupy exactly one CPU core without
-        competing for threads — important on low-core hardware like a Pi 4.
-        """
+        """Load the selected Piper model once, downloading files if necessary."""
         if self._voice is not None and self._loaded_model == model_name:
             return self._voice
 
         with self._voice_lock:
-            # Re-check inside the lock — another thread may have loaded it first.
             if self._voice is not None and self._loaded_model == model_name:
                 return self._voice
 
@@ -200,7 +208,7 @@ class PiperSynthesizer:
                 with config_path.open("r", encoding="utf-8") as f:
                     config_dict = json.load(f)
                 sess_options = onnxruntime.SessionOptions()
-                sess_options.intra_op_num_threads = 1
+                sess_options.intra_op_num_threads = os.cpu_count() or 4
                 self._voice = PiperVoice(
                     config=PiperConfig.from_dict(config_dict),
                     session=onnxruntime.InferenceSession(
@@ -221,6 +229,29 @@ class PiperSynthesizer:
                 return None
 
             return self._voice
+
+    def _cache_lock_for(
+        self, model_name: str, subdir: str, cache_key: str
+    ) -> threading.Lock:
+        """Return the in-process lock for one final WAV cache path."""
+        lock_key = (model_name, subdir, cache_key)
+        with self._cache_locks_lock:
+            lock = self._cache_locks.get(lock_key)
+            if lock is None:
+                lock = threading.Lock()
+                self._cache_locks[lock_key] = lock
+            return lock
+
+    @staticmethod
+    def _temp_wav_path(directory: Path) -> Path:
+        """Create a unique temporary WAV path in the destination directory."""
+        with tempfile.NamedTemporaryFile(
+            prefix=".local_voice_",
+            suffix=".wav.tmp",
+            dir=directory,
+            delete=False,
+        ) as tmp_file:
+            return Path(tmp_file.name)
 
     def _ensure_model_files(self, model_name: str) -> Path | None:
         """Ensure the selected Piper model and JSON config are present locally."""

@@ -27,12 +27,13 @@ from .const import (
 _PLAYER_DIR = Path(__file__).parent / "player"
 
 
-def register_ui(
+def register_ui(  # noqa: PLR0913
     rhapi: Any,
     test_callback: Any,
     audio_check_callback: Any,
     stop_audio_callback: Any,
     clear_cache_callback: Any,
+    rebuild_precache_callback: Any,
 ) -> None:
     """Register the Local Voice settings panel, options, and quick buttons."""
     _register_player_blueprint(rhapi)
@@ -104,7 +105,9 @@ def register_ui(
         "local_voice_notes",
         '<a href="/player" target="_blank" rel="noopener noreferrer">'
         "Open browser player in a new tab</a>\n\n"
-        "⚠ Set Voice Volume to 0 on all browser clients.",
+        "⚠ Set Voice Volume to 0 on all browser clients.\n\n"
+        "After startup or voice setting changes, use Rebuild pre-cache to "
+        "prepare schedule and current-heat WAV files.",
     )
 
     # Test phrase
@@ -142,6 +145,12 @@ def register_ui(
         name="local_voice_clear_cache",
         label="Clear TTS cache",
         function=clear_cache_callback,
+    )
+    rhapi.ui.register_quickbutton(
+        panel=PANEL_ID,
+        name="local_voice_rebuild_precache",
+        label="Rebuild pre-cache",
+        function=rebuild_precache_callback,
     )
 
 

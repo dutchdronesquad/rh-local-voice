@@ -205,7 +205,7 @@ def _copy_file(source: Path, target: Path, *, mode: int) -> None:
 
 def _write_control(target: Path, meta: PackageMeta, deb_root: Path) -> None:
     source = (DEB_SOURCE / "control").read_text()
-    installed_size_kib = _directory_size(deb_root) // 1024
+    installed_size_kib = _installed_size_kib(deb_root)
     lines = []
     wrote_installed_size = False
     for line in source.splitlines():
@@ -234,6 +234,15 @@ def _control_insert_index(lines: list[str]) -> int:
 
 def _directory_size(path: Path) -> int:
     return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+
+
+def _installed_size_kib(deb_root: Path) -> int:
+    payload_size = sum(
+        file.stat().st_size
+        for file in deb_root.rglob("*")
+        if file.is_file() and "DEBIAN" not in file.relative_to(deb_root).parts
+    )
+    return (payload_size + 1023) // 1024
 
 
 def _print_size_report(output: Path, deb_root: Path) -> None:

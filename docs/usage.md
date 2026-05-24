@@ -7,11 +7,40 @@ This guide covers day-to-day setup and operation for Local Voice.
 1. In RotorHazard, open **Settings** -> **Local Voice**.
 2. Enable **Plugin audio**.
 3. Choose a voice model and adjust the speech parameters if needed.
-4. Open `/player` from the RotorHazard host in a browser tab on the playback device, for example `http://rotorhazard.local:5000/player`.
-5. Set normal RotorHazard browser Voice Volume to `0` on clients that should only use Local Voice audio.
-6. Use **Generate test phrase** or **Play audio check** to verify playback.
+4. Install and start the Sendspin service on the RotorHazard host.
+5. Open `/player` from the RotorHazard host in a browser tab on the playback device, for example `http://rotorhazard.local:5000/player`.
+6. Set normal RotorHazard browser Voice Volume to `0` on clients that should only use Local Voice audio.
+7. Use **Generate test phrase** or **Play audio check** to verify playback.
 
-The Sendspin server listens on port `8927`. If another machine is used for playback, make sure that port is reachable on the local network.
+The Sendspin service receives plugin playback jobs on `127.0.0.1:8766` and
+serves browser players on port `8927`. If another machine is used for
+playback, make sure port `8927` is reachable on the local network.
+
+## Sendspin Service
+
+The planned local playback path is a separate service package named
+`rh-sendspin-service`. The plugin generates and caches WAV files, then sends
+playback jobs to the service over local HTTP.
+
+Current development command:
+
+```shell
+python -m sendspin_service
+```
+
+Target user install:
+
+```shell
+sudo apt install ./rh-sendspin-service_0.1.0_arm64.deb
+```
+
+Useful endpoints:
+
+- `GET /health`: service status, version, Sendspin port, and connected player count.
+- `POST /v1/play`: plugin endpoint for WAV playback jobs.
+- `POST /v1/stop`: stops current playback.
+
+Packaging work is tracked in `Sendspin Service Package PVA.md`.
 
 ## Settings
 
@@ -20,6 +49,8 @@ The Sendspin server listens on port `8927`. If another machine is used for playb
 - **Speech speed**: Controls speaking rate. `1.0` is Piper default; lower is slower, higher is faster.
 - **Noise scale**: Controls voice variation. Lower values are more monotone; higher values are more expressive.
 - **Phoneme width noise**: Controls duration variation between phonemes.
+- **Sendspin service URL**: HTTP ingest URL for the local Sendspin service.
+- **Sendspin service timeout**: HTTP timeout for local service playback requests.
 - **Test phrase**: Phrase used by the **Generate test phrase** button.
 
 ## Quick Buttons
@@ -70,6 +101,7 @@ Cache behavior:
 ## Troubleshooting
 
 - **No audio in the browser player**: confirm that `/player` is open, connected to the correct host, and that port `8927` is reachable from the playback device.
+- **Service is not reachable**: confirm `rh-sendspin-service` is running and `GET /health` works on `http://127.0.0.1:8766`.
 - **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in all regular RotorHazard browser clients.
 - **First phrase is slow**: the selected Piper model may be downloading or loading. Watch the RotorHazard log for Local Voice status messages.
 - **Browser playback stutters**: try Safari or a Chrome incognito window with extensions disabled, then validate on the actual race network.

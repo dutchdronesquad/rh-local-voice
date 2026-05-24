@@ -51,12 +51,13 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 - 🎙️ **Local TTS**: Generates voice callouts with [Piper TTS] entirely on-device.
 - 📡 **Sendspin streaming**: Streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
 - 🌐 **Browser player**: A built-in web player accessible at `/player`.
+- 🔊 **Race sounds**: Plays staging tones and the race-start buzzer through the same Sendspin output path.
 - 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
-- ⚡ **Smart caching**: Reusable pilot-name and lap-number segments are cached separately; use **Rebuild pre-cache** after startup or voice model/settings changes to prepare them ahead of racing.
+- ⚡ **Smart caching**: Reusable pilot-name and lap-number segments are cached separately; use **Rebuild pre-cache** after first setup or voice model/settings changes to prepare them ahead of racing.
 
 ## Requirements
 
-- [RotorHazard] with RHAPI plugin support.
+- [RotorHazard] with RHAPI support for `Evt.RACE_STAGE_TONE`.
 - Python 3.12 or newer.
 - Network access from playback clients to the RotorHazard server.
 - A browser on the playback device. The plugin serves its own Sendspin player at `/player`.
@@ -68,8 +69,9 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 3. Restart RotorHazard if requested.
 4. Open the RotorHazard settings page and enable **Local Voice**.
 5. Open `/player` from the RotorHazard host on the playback device.
-6. Use **Rebuild pre-cache** to prepare schedule, pilot-name, and lap-number WAV files.
-7. Use **Generate test phrase** or **Play audio check** to verify playback.
+6. Set RotorHazard browser Voice Volume and Tone Volume to `0` on clients that should only use Local Voice audio.
+7. Use **Rebuild pre-cache** to prepare schedule, pilot-name, and lap-number WAV files.
+8. Use **Generate test phrase** or **Play audio check** to verify playback.
 
 The first generated phrase for a voice model downloads the Piper model into the RotorHazard data cache. That can take a moment depending on the server and network connection.
 

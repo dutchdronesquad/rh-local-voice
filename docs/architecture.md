@@ -113,4 +113,6 @@ Segmenting avoids pre-generating every pilot/lap combination while still allowin
 
 ## Pre-cache rebuilds
 
-Manual pre-cache rebuild orchestration lives in `services/precache.py`. `plugin.py` starts rebuilds from the UI button and handles event reset cancellation, while `PrecacheManager` owns stale-generation tracking, directory cleanup, schedule phrase generation, lap segment generation, and completion notifications.
+Race-clock warning phrase planning lives in `services/clock_warnings.py`, using the same localized phrase logic for live event playback and manual pre-cache rebuilds.
+
+Manual pre-cache rebuild orchestration lives in `services/precache.py`. `plugin.py` starts rebuilds from the UI button and handles event reset cancellation, while `PrecacheManager` owns stale-generation tracking, directory cleanup, race-clock phrase generation, schedule phrase generation, lap segment generation, and completion notifications.

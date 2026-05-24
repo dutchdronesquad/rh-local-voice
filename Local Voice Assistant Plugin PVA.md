@@ -340,6 +340,7 @@ RotorHazard server
         │     Evt.HEAT_SET, CROSSING_ENTER/EXIT
         ├── Flt.EMIT_PHONETIC_DATA  (lap data snapshots)
         ├── Flt.EMIT_PHONETIC_TEXT  (server-originated text callouts)
+        ├── services/clock_warnings.py (race-clock warning phrases)
         ├── services/lap_callouts.py (lap callout segment planning)
         ├── services/precache.py    (manual pre-cache rebuilds)
         ├── services/schedule.py    (scheduled-race countdown timers)

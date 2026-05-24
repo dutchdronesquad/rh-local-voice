@@ -13,9 +13,10 @@ Important modules:
 - `ui.py`: RotorHazard settings panel, quick buttons, and `/player` blueprint.
 - `const.py`: option names, defaults, voice model list, and Sendspin port.
 - `services/`: small stateful helpers extracted from `plugin.py`.
+  - `services/clock_warnings.py`: race-clock warning phrase planning and reusable pre-cache phrase lists.
   - `services/lap_callouts.py`: lap callout segment planning and reusable segment lists for pre-cache.
   - `services/precache.py`: manual pre-cache rebuild orchestration, stale-job cancellation, cleanup, and completion notifications.
-  - `services/schedule.py`: scheduled-raced-race start countdown timers.
+  - `services/schedule.py`: scheduled-race start countdown timers.
 - `player/`: Vite/Preact source for the browser player; production output is written to `custom_plugins/local_voice/player/`.
 
 ## Runtime Behavior
@@ -51,9 +52,11 @@ local_voice_cache/
   models/                 downloaded Piper ONNX models
   tts/<model>/            normal cached phrases
   tts/<model>/precache/pilots/
-                           reusable race-clock, schedule, and pilot-name segments
+                           reusable pilot-name segments
   tts/<model>/precache/laps/
                            reusable lap-number segments
+  tts/<model>/precache/clock/
+                           race-clock warning phrases
   tts/<model>/precache/schedule/
                            scheduled-race countdown phrases
   tts/<model>/tmp/        ephemeral lap-time phrases

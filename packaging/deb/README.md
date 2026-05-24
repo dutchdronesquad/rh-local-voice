@@ -8,9 +8,15 @@ The package is expected to install a self-contained service executable at:
 /opt/sendspin-service/bin/sendspin-service
 ```
 
-The executable build step is intentionally not defined here yet. The packaging
-work still needs a bundling decision, such as PyInstaller, Nuitka, PEX with a
-bundled runtime, or another self-contained runtime approach.
+The first executable build path uses PyInstaller and `dpkg-deb`:
+
+```shell
+uv run --with pyinstaller python -m tools.build_sendspin_service_deb
+```
+
+The script writes build intermediates under `build/sendspin-service/` and the resulting package under `dist/`.
+
+This PyInstaller path is an experimental packaging validation path, not the final production packaging decision. Before release, compare it with Nuitka and a bundled CPython/app-runtime layout.
 
 Target package behavior:
 

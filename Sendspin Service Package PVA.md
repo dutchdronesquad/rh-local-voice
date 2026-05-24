@@ -624,51 +624,68 @@ Docs:
 
 Goal: build and test the first self-contained `.deb` package on this Ubuntu VM.
 
+Status note: the current branch uses PyInstaller as an experimental build path to validate the `.deb`, systemd, and self-contained runtime shape. This is not yet the final production packaging decision. Before release, compare PyInstaller with at least Nuitka and a bundled CPython/app-runtime layout against artifact size, startup time, debugability, `arm64` build reliability, CI complexity, and dependency isolation.
+
 Packaging checklist:
 
-- [ ] Choose bundling tool: PyInstaller, Nuitka, PEX with bundled runtime, or another self-contained approach.
+- [x] Add experimental PyInstaller build path for the first package MVP.
 - [x] Add package source under `packaging/deb/`.
 - [x] Add Debian `control`.
 - [x] Add systemd unit template.
 - [x] Add `/etc/default/sendspin-service` config template.
 - [x] Add maintainer scripts: `postinst`, `prerm`, `postrm` as needed.
-- [ ] Install app under `/opt/sendspin-service`.
-- [ ] Install state/work directory under `/var/lib/sendspin-service` or use `StateDirectory`.
-- [ ] Make package install without `uv`, `pip`, or RotorHazard venv.
+- [x] Add a build script that stages the app under `/opt/sendspin-service`.
+- [x] Install state/work directory under `/var/lib/sendspin-service` or use `StateDirectory`.
+- [x] Build a package artifact that installs without `uv`, `pip`, or RotorHazard venv.
 
 Runtime checklist:
 
-- [ ] Produce `/opt/sendspin-service/bin/sendspin-service`.
-- [ ] Ensure executable includes or owns the required Python runtime.
+- [x] Add build path for `/opt/sendspin-service/bin/sendspin-service`.
+- [x] Ensure executable includes or owns the required Python runtime.
 - [ ] Ensure service starts through systemd.
 - [ ] Ensure `/health` returns `ok`, `version`, `sendspin_port`, and `connected_players`.
 
 Size checklist:
 
-- [ ] Record `.deb` size.
-- [ ] Record installed size.
+- [x] Record `.deb` size.
+- [x] Record installed size.
 - [ ] Strip or remove unnecessary caches, metadata, tests, and `__pycache__`.
 - [ ] Confirm Piper models and plugin-only dependencies are not included.
 - [ ] Document any large dependency that cannot be removed.
 
+Current `amd64` PyInstaller package measurement:
+
+```text
+amd64 .deb size: 86.1 MiB
+amd64 installed size: 86.9 MiB
+amd64 executable check: build/sendspin-service/pyinstaller/dist/sendspin-service --help
+```
+
+Production packaging decision still required:
+
+- [ ] Compare PyInstaller with Nuitka.
+- [ ] Compare PyInstaller with a bundled CPython/app-runtime layout.
+- [ ] Build candidates with a fixed release Python version, preferably Python 3.12 or 3.13 rather than whatever the local shell provides.
+- [ ] Choose the final production packaging strategy based on size, startup behavior, debugability, `arm64` build reliability, CI complexity, and dependency isolation.
+
 Ubuntu VM lifecycle checklist:
 
-- [ ] `sudo apt install ./sendspin-service_0.1.0_amd64.deb`
-- [ ] `systemctl status sendspin-service`
-- [ ] `curl http://127.0.0.1:8766/health`
+- [x] `sudo apt install ./sendspin-service_0.1.0_amd64.deb`
+- [x] `systemctl status sendspin-service`
+- [x] `curl http://127.0.0.1:8766/health`
 - [ ] `sudo apt install ./sendspin-service_0.1.1_amd64.deb`
 - [ ] Confirm `/etc/default/sendspin-service` survives upgrade.
-- [ ] `sudo apt remove sendspin-service`
-- [ ] Confirm service stops and config remains.
-- [ ] `sudo apt purge sendspin-service`
-- [ ] Confirm config/state cleanup behavior is correct.
+- [x] `sudo apt remove sendspin-service`
+- [x] Confirm service stops and config remains.
+- [x] `sudo apt purge sendspin-service`
+- [x] Confirm config/state cleanup behavior is correct.
 
 Acceptance:
 
-- [ ] A user can install and start the service with only `sudo apt install ./...deb`.
-- [ ] No user-facing install step mentions `uv`, `pip`, or Python version.
+- [x] A user can install and start the service with only `sudo apt install ./...deb`.
+- [x] No user-facing install step mentions `uv`, `pip`, or Python version.
 - [ ] The plugin can play audio through the installed service on the Ubuntu VM.
-- [ ] Package size is recorded and judged acceptable for `amd64`.
+- [x] Package size is recorded and judged acceptable for `amd64`.
 
 Docs:
 

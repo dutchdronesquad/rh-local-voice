@@ -4,6 +4,37 @@ All notable shipped changes to Local Voice should be documented in this file.
 
 This changelog is intentionally concise. GitHub Releases can carry the fuller change list and release assets.
 
+## [0.2.0] - 2026-05-24
+
+### Scheduled race callouts
+
+Local Voice now listens to RotorHazard race schedule events and can announce countdowns before a deferred race start. The default countdown phrases cover 60, 30, 10, and 5 seconds before the scheduled start, and pending countdowns are cancelled when the schedule is replaced or cancelled.
+
+Countdown phrases are localized alongside lap callouts for the supported voice-model languages:
+
+- English
+- Dutch
+- German
+
+### Faster race-day pre-cache
+
+Pre-cache rebuilding has been split into reusable segments for pilot names, lap numbers, and scheduled-race countdowns. This keeps repeated lap announcements fast while allowing temporary lap-time audio to remain heat-specific.
+
+The pre-cache rebuild action now cancels stale rebuild jobs, reports completion for the current heat, and clears the relevant pre-cache folders before regenerating audio for the selected model.
+
+### Sendspin playback
+
+Sendspin playback can now schedule audio against a future playback time instead of only appending immediate clips. This improves scheduled countdown timing and allows future clips to be fully buffered before playback starts.
+
+Queued audio now carries a per-job volume value, and the Sendspin backend applies linear gain to PCM audio while leaving cached WAV files unchanged.
+
+Playback buffering has also been tightened:
+
+- Consecutive callouts are appended to an active stream without resetting connected clients.
+- Late-joining Sendspin clients are synced into the active stream.
+- Stale audio is dropped before scheduling if it would start after its expiry deadline.
+- The active stream is stopped once queued playback has gone idle.
+
 ## [0.1.0] - 2026-05-22
 
 ### Local voice generation

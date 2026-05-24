@@ -2,7 +2,13 @@
 
 ## Overview
 
-The plugin is structured as a pipeline: RotorHazard events → synthesis → audio queue → Sendspin service → browser clients.
+The plugin is structured as a pipeline: RotorHazard events → synthesis → audio
+queue → Sendspin playback → browser clients.
+
+The repository is currently in a migration phase. The plugin still contains the
+local Sendspin playback path, while a standalone `sendspin_service/` package is
+being built alongside it. The target state is for the plugin to send local HTTP
+playback jobs to that service and stop owning the Sendspin server process.
 
 ```
 RH event thread
@@ -20,13 +26,7 @@ RH event thread
                                AudioQueue (priority queue, daemon thread)
                                    │
                                    ▼
-                               HTTP output client
-                                   │
-                                   ▼
-                               Sendspin service
-                                   │
-                                   ▼
-                               SendSpinServer (service process)
+                               SendSpinServer (plugin process today)
                                    │
                                    ▼
                             Browser clients (Sendspin protocol)
@@ -77,15 +77,30 @@ Cache keys are `sha1(text.lower())_{speed}_{noise}_{noise_w}` so switching synth
 ## Sendspin Service Integration
 
 The target architecture keeps Sendspin server ownership outside the RotorHazard
-plugin. The plugin owns TTS generation and queueing, then sends WAV playback
+plugin. The plugin owns TTS generation and cache files, then sends WAV playback
 jobs to the local Sendspin service over HTTP. The service owns `aiosendspin`,
 player connections, stream state, reconnect behavior, and stop/resume handling.
+
+Current migration state:
+
+- `sendspin_service/audio_queue.py` owns the service-side priority queue.
+- `sendspin_service/sendspin.py` owns the service-side Sendspin server adapter.
+- `sendspin_service/server.py` owns the HTTP ingest API.
+- The plugin still has its internal Sendspin implementation until the service
+  package and plugin HTTP output path are proven.
+
+This temporary duplication is intentional. The service copy can evolve toward a
+packaged runtime without forcing the plugin package to be importable outside
+RotorHazard.
 
 The service exposes:
 
 - `GET /health`
 - `POST /v1/play`
 - `POST /v1/stop`
+
+`POST /v1/play` accepts a JSON object with `wav_paths` plus optional `text`,
+`priority`, `expiry_sec`, `play_at`, and `volume` fields.
 
 Inside the service, `SendSpinServer` wraps `aiosendspin` behind a synchronous
 interface. It runs an asyncio event loop on a dedicated daemon thread and
@@ -94,6 +109,7 @@ can interact with it without knowing about asyncio.
 
 Key design points:
 - Consecutive `play()` calls append to the active stream rather than restarting it, so back-to-back lap callouts play without audible resets or gaps.
+- Jobs may provide a `play_at` monotonic timestamp for time-sensitive static sounds.
 - Late-joining browser clients are synced into the active stream group so they receive audio already in progress.
 - The stream is torn down automatically after the last queued clip finishes playing (idle-stop task).
 

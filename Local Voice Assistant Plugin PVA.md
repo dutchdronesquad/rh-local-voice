@@ -611,9 +611,16 @@ and expiry. Sendspin services are output targets.
 - [x] Log target-specific failures without disabling healthy targets
 - [x] Stop button fans out to every enabled target
 - [ ] Replace internal/external local output abstraction with service-only local HTTP output
-- [ ] Track detailed package work in `Sendspin Service Package PVA.md`
+- [x] Track detailed package work in `Sendspin Service Package PVA.md`
 
 #### Sendspin server API
+Current migration state: `sendspin_service/` has its own `audio_queue.py`,
+`sendspin.py`, and `server.py` so the service can evolve independently while
+the plugin still keeps the internal Sendspin path as a fallback. This temporary
+duplication is intentional until the service package and HTTP output path are
+tested end to end. The first service API smoke test has passed for `/health`,
+`/v1/play`, and `/v1/stop`.
+
 - [x] Create Sendspin server entrypoint under root-level `sendspin_service/`, separate from RotorHazard plugin initialization
 - [x] Server starts `SendSpinServer` and exposes an HTTP ingest API
 - [x] `GET /health` returns server status, Sendspin listen port, and connected player count when available

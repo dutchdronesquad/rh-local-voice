@@ -574,13 +574,21 @@ Internal removal gate:
 
 Goal: move all Sendspin server/process code into `sendspin_service/` and keep plugin code as HTTP client only.
 
+Current migration status: the repository now contains a first standalone
+`sendspin_service/` package with its own service-side `audio_queue.py`,
+`sendspin.py`, and `server.py`. This is intentionally duplicated from the
+plugin-side playback path for the transition. The plugin should keep its
+internal Sendspin path until the service package and HTTP output path have been
+tested end to end.
+
 Service code checklist:
 
-- [ ] Move final Sendspin adapter implementation to `sendspin_service/sendspin.py`.
-- [ ] Keep `sendspin_service/server.py` as the HTTP ingest API.
-- [ ] Keep `sendspin_service/audio_queue.py` owned by the service.
-- [ ] Ensure `/health`, `/v1/play`, and `/v1/stop` work without importing plugin modules.
-- [ ] Add `version` to `/health`.
+- [x] Add a first Sendspin adapter implementation to `sendspin_service/sendspin.py`.
+- [x] Keep `sendspin_service/server.py` as the HTTP ingest API.
+- [x] Keep `sendspin_service/audio_queue.py` owned by the service.
+- [x] Avoid importing RotorHazard plugin modules from `sendspin_service`.
+- [x] Add `version` to `/health`.
+- [x] Smoke-test `/health`, `/v1/play`, and `/v1/stop` outside the sandbox.
 - [ ] Add clear startup errors for port conflicts on `8766` and `8927`.
 - [ ] Keep ingest body limit configurable with `SENDSPIN_MAX_BODY_MB`.
 
@@ -600,16 +608,16 @@ Dependency checklist:
 
 Acceptance:
 
-- [ ] `python -m sendspin_service --help` works from the repo.
-- [ ] `python -m sendspin_service` starts without importing RotorHazard-only modules.
+- [x] `python -m sendspin_service --help` works from the repo.
+- [x] `python -m sendspin_service` starts without importing RotorHazard-only modules.
 - [ ] `rg "aiosendspin" custom_plugins/local_voice` returns no plugin-side server usage.
-- [ ] The plugin can be loaded by RotorHazard without `sendspin_service` installed as a Python package.
+- [x] The plugin can be loaded by RotorHazard without `sendspin_service` installed as a Python package.
 
 Docs:
 
-- [ ] Update `docs/architecture.md` to show plugin/service separation.
-- [ ] Update `docs/usage.md` to stop referring to internal Sendspin as the default.
-- [ ] Add a small service API section with `/health`, `/v1/play`, `/v1/stop`.
+- [x] Update `docs/architecture.md` to show plugin/service separation.
+- [x] Update `docs/usage.md` to stop referring to the standalone service as the default while the plugin still owns internal Sendspin.
+- [x] Add a small service API section with `/health`, `/v1/play`, `/v1/stop`.
 
 ---
 

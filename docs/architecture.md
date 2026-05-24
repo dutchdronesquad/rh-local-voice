@@ -2,7 +2,7 @@
 
 ## Overview
 
-The plugin is structured as a pipeline: RotorHazard events → synthesis → audio queue → Sendspin → browser clients.
+The plugin is structured as a pipeline: RotorHazard events → synthesis → audio queue → Sendspin service → browser clients.
 
 ```
 RH event thread
@@ -20,7 +20,13 @@ RH event thread
                                AudioQueue (priority queue, daemon thread)
                                    │
                                    ▼
-                               SendSpinServer (asyncio event loop, daemon thread)
+                               HTTP output client
+                                   │
+                                   ▼
+                               Sendspin service
+                                   │
+                                   ▼
+                               SendSpinServer (service process)
                                    │
                                    ▼
                             Browser clients (Sendspin protocol)
@@ -68,9 +74,23 @@ Cache keys are `sha1(text.lower())_{speed}_{noise}_{noise_w}` so switching synth
 | NORMAL   | Lap callouts |
 | LOW      | Reserved |
 
-## Sendspin integration
+## Sendspin Service Integration
 
-`SendSpinServer` wraps `aiosendspin` behind a synchronous interface. It runs an asyncio event loop on a dedicated daemon thread and exposes blocking `play()` / `stop()` methods so the `AudioQueue` worker (a plain thread) can interact with it without knowing about asyncio.
+The target architecture keeps Sendspin server ownership outside the RotorHazard
+plugin. The plugin owns TTS generation and queueing, then sends WAV playback
+jobs to the local Sendspin service over HTTP. The service owns `aiosendspin`,
+player connections, stream state, reconnect behavior, and stop/resume handling.
+
+The service exposes:
+
+- `GET /health`
+- `POST /v1/play`
+- `POST /v1/stop`
+
+Inside the service, `SendSpinServer` wraps `aiosendspin` behind a synchronous
+interface. It runs an asyncio event loop on a dedicated daemon thread and
+exposes blocking `play()` / `stop()` methods so the service `AudioQueue` worker
+can interact with it without knowing about asyncio.
 
 Key design points:
 - Consecutive `play()` calls append to the active stream rather than restarting it, so back-to-back lap callouts play without audible resets or gaps.

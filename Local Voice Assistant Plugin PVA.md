@@ -115,7 +115,7 @@ Piper as a persistent TCP service. Plugin sends text, receives WAV back. Can run
 
 ## B. Audio Output — Sendspin
 
-Sendspin separates a **server/source** (orchestrates streams, accepts audio input) from a **player/client** (receives audio, plays through a local audio device). The current plugin starts an in-process Sendspin server and streams generated WAV audio to connected clients on the local network. Named player targeting remains planned work.
+Sendspin separates a **server/source** (orchestrates streams, accepts audio input) from a **player/client** (receives audio, plays through a local audio device). The current development branch has proven both embedded and service-based playback, but the target direction is a packaged local Sendspin service that runs outside RotorHazard. Named player targeting remains planned work.
 
 ```
 RotorHazard plugin
@@ -126,26 +126,71 @@ RotorHazard plugin
   → speaker / mixer
 ```
 
-The Sendspin server can run anywhere — on the Pi itself, as a sidecar service, or in the cloud. The player runs on whatever device is connected to the speakers. These are deployment choices, not separate code paths. The plugin has one Sendspin integration; the operator configures where the server and players are.
+Updated direction: local Sendspin playback should use a separate packaged
+service, not an internal plugin-managed server. The detailed service packaging,
+runtime, `.deb`, and deployment plan lives in `Sendspin Service Package PVA.md`.
+"Sidecar" is only an internal/deployment shorthand; user-facing docs should
+prefer **Sendspin service**, **Local Sendspin service**, and **Cloud Sendspin
+service**.
+
+The Sendspin service can run locally on the RotorHazard host or in the cloud.
+The player runs on whatever device is connected to the speakers. These are
+deployment choices, not separate callout-generation code paths.
+
+Target selection should support fan-out. The plugin may send the same generated WAV job to both an external Sendspin server for the PA and a cloud Sendspin server for phones. The local PA target must not be delayed by a slow or unreachable cloud target.
 
 ### Sendspin server placement
 
-**On the RotorHazard host (in-process or sidecar)**
+**Legacy: Internal Sendspin server on the RotorHazard host**
 
-Requires Python 3.12+ on the host. The simplest setup: everything local, no internet needed.
+The original MVP path. The plugin drove `aiosendspin` directly in the
+RotorHazard process. This proved useful for initial validation, but it adds
+mode-switching complexity, competes for port `8927`, and couples Sendspin
+restarts to RotorHazard restarts. This path is superseded by the packaged local
+Sendspin service plan.
 
-- In-process: plugin drives Sendspin directly (Python 3.12+ required in the RH virtualenv).
-- Sidecar: Sendspin runs as a separate systemd service, plugin talks to it over local HTTP/WS. Useful when you cannot upgrade the RH Python environment or want to restart Sendspin independently.
+```
+RotorHazard plugin → internal Sendspin server → Sendspin player
+```
+
+**Local Sendspin service on the Raspberry Pi**
+
+Preferred local path. Sendspin runs as a separate packaged service managed by
+systemd. The plugin keeps generating and caching WAV files, but sends playback
+jobs to the service over local HTTP. The target install is a self-contained
+`.deb` package so users do not need to manage `uv`, `pip`, virtualenvs, or
+Python versions.
+
+```
+RotorHazard plugin → http://localhost:8766 → Sendspin server → Sendspin player
+```
 
 **In the cloud**
 
-Sendspin server runs on a VPS or Sendspin's own hosted service. The plugin sends audio over the internet (a mobile hotspot is enough). Anyone at the event can scan a QR code and hear callouts on their own phone — no dedicated audio device or PA needed.
+The same Sendspin server runs on a VPS, Docker host, or Sendspin-hosted environment. The plugin sends audio jobs over the internet, protected by token auth. Anyone at the event can scan a QR code and hear callouts on their own phone — no dedicated audio device or PA needed.
 
 ```
-RotorHazard plugin → internet → Sendspin cloud server → phone (QR code)
+RotorHazard plugin → HTTPS → Cloud Sendspin server → phone (QR code)
 ```
 
-This works as a standalone setup for small events, or in parallel with a local player for events that have both a PA and want a spectator feed.
+This works as the only audio path for small events, or in parallel with a local player for events that have both a PA and a spectator feed.
+
+**Local + cloud fan-out**
+
+For full events, the plugin should be able to send every playback job to both targets:
+
+```
+RotorHazard plugin
+  → Local Sendspin service   → PA / speakers
+  → Cloud Sendspin service   → phones / spectator feed
+```
+
+Fan-out behavior:
+- Local and cloud sends run independently.
+- Local target uses a short timeout and remains the race-day priority.
+- Cloud target uses its own timeout and failure state.
+- A failed cloud send is logged and surfaced in status, but must not block or delay the local PA.
+- Stop commands fan out to every enabled target.
 
 ### Player placement
 
@@ -153,12 +198,11 @@ The Sendspin player can run on any device with an audio output: Intel NUC, lapto
 
 ### Deployment examples
 
-| Situation | Sendspin server | Player |
+| Situation | Sendspin service | Player |
 |---|---|---|
-| Simple local setup, Python 3.12 on Pi | In-process on Pi | NUC or laptop at speakers |
-| Existing Pi on Python 3.10/3.11 | Sidecar service on Pi | NUC or laptop at speakers |
+| Normal local setup | Local service package on Pi | NUC or laptop at speakers |
 | Small event, no PA | Cloud | Pilots' and spectators' phones via QR code |
-| Full event setup | Local (for PA) + Cloud (for phones) | NUC at PA + any phone |
+| Full event setup | Local service for PA + cloud service for phones | NUC at PA + any phone |
 
 
 ### Browser player: current implementation
@@ -296,9 +340,27 @@ RotorHazard server
         ├── TTS: piper-tts (in-process) → WAV cache
         │     ~/rh-data/local_voice_cache/tts/
         └── Sendspin output
-              Variant A: in-process source
-              Variant B: HTTP client → sidecar service
+              Local: HTTP client → local Sendspin service
+              Cloud: HTTP client → cloud Sendspin service
+              Fan-out: local + cloud targets in parallel (planned)
 ```
+
+Updated Sendspin output direction:
+
+- The plugin should only dispatch WAV playback jobs over HTTP.
+- The local Sendspin service owns `aiosendspin`, player connections, and stream state.
+- The detailed package/build/deploy plan is tracked in `Sendspin Service Package PVA.md`.
+- Later cloud output should fan out independently from the local service path.
+
+The audio queue should remain unchanged: it still owns priority, expiry, and single-worker ordering. Output fan-out happens behind the queue worker. The queue worker may wait for short output calls, but one slow target must not block another target. Remote outputs therefore need per-target timeouts and failure isolation.
+
+The local Sendspin service should expose a minimal ingest API:
+
+- `GET /health` — server running, Sendspin status, connected player count when available.
+- `POST /v1/play` — accepts one or more WAV files plus optional expiry metadata; queues/appends them to the Sendspin stream.
+- `POST /v1/stop` — stops current playback and clears scheduled audio.
+
+The same server implementation should be usable for a local systemd unit and a cloud Docker container. Cloud deployments additionally require TLS at the edge and token authentication for ingest endpoints.
 
 ### Playback worker
 
@@ -370,8 +432,13 @@ Known issues / deferred fixes:
 Post-MVP planned / not implemented yet:
 - TTS engine selector: piper-tts / Wyoming Piper / disabled
 - Wyoming Piper host and port
-- Sendspin mode: in-process / sidecar / disabled
-- Sendspin sidecar URL
+- Sendspin output targets:
+  - Local Sendspin service URL / timeout / health status
+  - Cloud Sendspin service: enabled / URL / token / health status
+- Sendspin server target timeouts:
+  - Local service timeout: short default, e.g. 2-5 seconds
+  - Cloud service timeout: longer default, e.g. 3-5 seconds
+- Sendspin cloud join URL / QR code
 
 ---
 
@@ -379,7 +446,7 @@ Post-MVP planned / not implemented yet:
 
 The MVP is Phase 1 through Phase 3: local Piper synthesis, race-callout queueing, and local Sendspin/browser playback. A phase is done when every checkbox is ticked and the success criteria are met — not before.
 
-Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper, mDNS, and broader polish are tracked separately under **Post-MVP Phases**.
+Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyoming Piper, mDNS, and broader polish are tracked separately under **Post-MVP Phases**.
 
 ---
 
@@ -480,10 +547,10 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 - [x] Add `aiosendspin` to plugin dependencies; keep server-only extras explicit in `manifest.json` (`av`, `numpy`, `pillow`) because RotorHazard plugin install flows may not preserve extras reliably
 - [x] Sendspin source/server starts when plugin initializes
 - [x] Sendspin source accepts WAV input from the plugin audio queue worker
-- [x] In-process mode: plugin drives `aiosendspin` directly (Python 3.12+)
+- [x] Embedded mode: plugin drives `aiosendspin` directly (Python 3.12+)
 
 #### Test phrase through Sendspin
-- [x] Test button sends phrase through the full stack: Piper → cache → in-process `aiosendspin` → connected player(s)
+- [x] Test button sends phrase through the full stack: Piper → cache → embedded `aiosendspin` → connected player(s)
 
 #### Browser player rewrite
 - [x] Browser player served at `/player`
@@ -504,13 +571,20 @@ Deferred RHAPI-dependent features, sidecar/cloud output, QR codes, Wyoming Piper
 
 ## Post-MVP Phases
 
-Post-MVP work starts after the local MVP is race-day usable: full local race callouts, caching/pre-generation, in-process Sendspin, and browser player playback. This section includes upstream-dependent RotorHazard features, deployment modes, live status polish, and formal latency measurements that are useful but not required for the first stable release.
+Post-MVP work starts after the local MVP is race-day usable: full local race
+callouts, caching/pre-generation, local Sendspin service playback, and browser
+player playback. This section includes upstream-dependent RotorHazard features,
+deployment modes, live status polish, and formal latency measurements that are
+useful but not required for the first stable release.
 
 ---
 
-### Phase 4 — Deferred RH Features, Sidecar, Cloud, and QR Code
+### Phase 4 — Deferred RH Features, Local Sendspin Service, Cloud, and QR Code
 
-**Goal:** Track RHAPI-dependent callouts outside the MVP, and let Sendspin run as an independent sidecar service or cloud path for spectator/pilot phone feeds.
+**Goal:** Track RHAPI-dependent callouts outside the MVP, and let Sendspin run
+as a packaged local service, in the cloud, or both at the same time. The plugin
+remains responsible for RH events, Piper synthesis, WAV caching, queue priority,
+and expiry. Sendspin services are output targets.
 
 #### Deferred RH / RHAPI-dependent callouts
 - [ ] `Evt.RACE_PILOT_DONE` → "[callsign] finished"
@@ -523,19 +597,51 @@ Post-MVP work starts after the local MVP is race-day usable: full local race cal
 - [ ] Audio profile toggles for race clock, arm sequence, race tied/overtime, and race leader callouts
 - [ ] Split pass callouts via `Flt.EMIT_PHONETIC_SPLIT` (payload: `pilot_name`, `split_id`, `split_time`, `split_speed`; only relevant on tracks with split sensors)
 
-#### Sendspin sidecar service
-- [ ] Provide `local-voice-sendspin.service` systemd unit file with the plugin
-- [ ] Plugin setting: Sendspin mode (in-process / sidecar / disabled)
-- [ ] Plugin setting: sidecar URL (default: `http://localhost:8766`)
-- [ ] Sidecar mode: plugin sends WAV jobs to local sidecar via HTTP/WS
-- [ ] Plugin health check pings sidecar status endpoint
-- [ ] Sidecar mode works without Python 3.12+ in the RotorHazard virtualenv
-- [ ] Document sidecar installation steps (pip install in separate venv, enable service)
+#### Sendspin output abstraction (superseded by service-only package direction)
+- [x] Add a small output protocol/interface with `play(wav_paths, expires_at)` and `stop()`
+- [x] Move current `SendSpinServer` usage behind `InternalSendspinOutput`
+- [x] Add `RemoteSendspinOutput` that posts WAV jobs to a Sendspin server URL
+- [x] Add `FanoutSendspinOutput` that calls all enabled outputs independently
+- [x] Use per-target timeouts so cloud latency never delays the local PA
+- [x] Log target-specific failures without disabling healthy targets
+- [x] Stop button fans out to every enabled target
+- [ ] Replace internal/external local output abstraction with service-only local HTTP output
+- [ ] Track detailed package work in `Sendspin Service Package PVA.md`
+
+#### Sendspin server API
+- [x] Create Sendspin server entrypoint under root-level `sendspin_service/`, separate from RotorHazard plugin initialization
+- [x] Server starts `SendSpinServer` and exposes an HTTP ingest API
+- [x] `GET /health` returns server status, Sendspin listen port, and connected player count when available
+- [x] `POST /v1/play` accepts one or more WAV files and optional expiry metadata
+- [x] `POST /v1/stop` stops current playback and clears scheduled audio
+- [x] Server appends queued WAVs to the active Sendspin stream, preserving current MVP playback behavior
+- [x] Server rejects stale jobs when expiry metadata says playback would start too late
+
+#### Local Sendspin service on Raspberry Pi
+- [x] Provide `sendspin.service` systemd unit file with the repo
+- [ ] Remove plugin setting: Sendspin local mode (Internal server / External server / Disabled)
+- [ ] Plugin setting: Sendspin service URL (default: `http://127.0.0.1:8766`)
+- [ ] Plugin health check pings service status endpoint
+- [ ] Local service works as a self-contained `.deb` package
+- [ ] Local service does not depend on RotorHazard venv, `uv`, `pip`, or user-managed Python
+- [ ] Document service package install, upgrade, status, logs, remove, and purge
 
 #### Cloud Sendspin target
-- [ ] Cloud server URL supported as a player target (same target list as local)
-- [ ] Plugin sends same audio jobs to cloud target alongside any local targets
+- [ ] Plugin setting: Cloud Sendspin server enabled/disabled
+- [ ] Plugin setting: Cloud Sendspin server URL
+- [ ] Plugin setting: Cloud ingest token / API key
+- [ ] `RemoteSendspinOutput` sends WAV jobs to cloud service using HTTPS
+- [ ] Cloud target can run alone for small events without a PA
+- [ ] Cloud target can run alongside local service for PA + spectator phone feed
+- [ ] Cloud failures do not block local output and are shown as target-specific warnings
 - [ ] No change required to the audio queue or TTS pipeline
+
+#### Cloud Docker deployment
+- [x] Add Dockerfile for the Sendspin server under `sendspin_service/`
+- [ ] Add documented environment variables: ingest token, HTTP port, Sendspin listen port, public base URL
+- [ ] Container exposes the Sendspin player endpoint and HTTP ingest endpoint
+- [ ] Document reverse-proxy/TLS expectation for public deployments
+- [ ] Document a minimal VPS deployment path
 
 #### QR code for spectator/pilot feed
 - [ ] Generate QR code from the Sendspin player join URL (cloud target)
@@ -544,15 +650,17 @@ Post-MVP work starts after the local MVP is race-day usable: full local race cal
 - [ ] Panel note: "Requires internet access from RotorHazard host (hotspot is sufficient)"
 
 #### Reconnect handling
-- [ ] Auto-reconnect all targets on disconnect (exponential backoff: 2 s → 4 s → 8 s → max 60 s)
-- [ ] Log each reconnect attempt and success
-- [ ] Reconnect does not require plugin restart or RotorHazard restart
+- [ ] Health checks run per enabled target
+- [ ] Failed targets retry health checks with exponential backoff: 2 s → 4 s → 8 s → max 60 s
+- [ ] Log each reconnect/health attempt and success per target
+- [ ] Recovered targets resume receiving new jobs without plugin or RotorHazard restart
 
 **Success criteria:**
 - Phone hears race callouts after scanning QR code (cloud path)
-- Sidecar restarts independently without restarting RotorHazard; reconnects within 10 seconds
+- Local Sendspin service restarts independently without restarting RotorHazard; reconnects within 10 seconds
 - Local player and cloud player both receive audio simultaneously
-- Install from scratch on a Pi with Python 3.10 works using the sidecar path
+- A cloud outage does not delay or break local PA output
+- Install from scratch on a Pi works using the local service package path without user-managed `uv`, `pip`, or Python setup
 
 ---
 
@@ -586,7 +694,8 @@ Post-MVP work starts after the local MVP is race-day usable: full local race cal
 - [ ] Piper: download and configure a voice model
 - [ ] Wyoming Piper: run as a systemd service
 - [ ] Sendspin player: install on NUC / laptop / Pi
-- [ ] Sendspin sidecar: install on Pi for Python 3.10/3.11 setups
+- [ ] Local Sendspin service: install/upgrade/remove packaged `.deb` on Pi
+- [ ] Cloud Sendspin server: deploy with Docker behind HTTPS
 - [ ] RotorHazard browser clients: how to set Voice Volume to 0
 - [ ] End-to-end test checklist for a new installation
 
@@ -604,7 +713,8 @@ Post-MVP work starts after the local MVP is race-day usable: full local race cal
 |---|---|---|
 | Sendspin browser playback hiccups on race network | Medium | Validate `/player` on actual event network and speaker hardware before race day |
 | Sendspin public preview API changes | Medium | Pin version, document upgrade path |
-| Python 3.12 not available on Pi | Medium | Use sidecar variant B |
+| Python 3.12 not available in RotorHazard virtualenv | Medium | Move Sendspin dependencies into a separate external Sendspin server venv; keep plugin-side dependencies compatible where possible |
+| Cloud target is slow or unreachable | Medium | Fan-out outputs independently; local PA target has its own short timeout and remains healthy |
 | piper-tts too slow on Pi for uncached callouts | High | WAV caching now; planned heat-load pre-caching; Wyoming Piper on separate machine as fallback |
 | Browser audio not disabled on clients | Duplicate audio | Setup checklist in UI |
 | mDNS unreliable on race network | Medium | Manual player URL as primary config |

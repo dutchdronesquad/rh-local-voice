@@ -588,7 +588,7 @@ Service code checklist:
 - [x] Keep `sendspin_service/audio_queue.py` owned by the service.
 - [x] Avoid importing RotorHazard plugin modules from `sendspin_service`.
 - [x] Add `version` to `/health`.
-- [ ] Smoke-test `/health`, `/v1/play`, and `/v1/stop` outside the sandbox.
+- [x] Smoke-test `/health`, `/v1/play`, and `/v1/stop` outside the sandbox.
 - [ ] Add clear startup errors for port conflicts on `8766` and `8927`.
 - [ ] Keep ingest body limit configurable with `SENDSPIN_MAX_BODY_MB`.
 
@@ -608,16 +608,16 @@ Dependency checklist:
 
 Acceptance:
 
-- [ ] `python -m sendspin_service --help` works from the repo.
-- [ ] `python -m sendspin_service` starts without importing RotorHazard-only modules.
+- [x] `python -m sendspin_service --help` works from the repo.
+- [x] `python -m sendspin_service` starts without importing RotorHazard-only modules.
 - [ ] `rg "aiosendspin" custom_plugins/local_voice` returns no plugin-side server usage.
-- [ ] The plugin can be loaded by RotorHazard without `sendspin_service` installed as a Python package.
+- [x] The plugin can be loaded by RotorHazard without `sendspin_service` installed as a Python package.
 
 Docs:
 
-- [ ] Update `docs/architecture.md` to show plugin/service separation.
-- [ ] Update `docs/usage.md` to stop referring to internal Sendspin as the default.
-- [ ] Add a small service API section with `/health`, `/v1/play`, `/v1/stop`.
+- [x] Update `docs/architecture.md` to show plugin/service separation.
+- [x] Update `docs/usage.md` to stop referring to the standalone service as the default while the plugin still owns internal Sendspin.
+- [x] Add a small service API section with `/health`, `/v1/play`, `/v1/stop`.
 
 ---
 

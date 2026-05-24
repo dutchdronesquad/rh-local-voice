@@ -574,13 +574,21 @@ Internal removal gate:
 
 Goal: move all Sendspin server/process code into `sendspin_service/` and keep plugin code as HTTP client only.
 
+Current migration status: the repository now contains a first standalone
+`sendspin_service/` package with its own service-side `audio_queue.py`,
+`sendspin.py`, and `server.py`. This is intentionally duplicated from the
+plugin-side playback path for the transition. The plugin should keep its
+internal Sendspin path until the service package and HTTP output path have been
+tested end to end.
+
 Service code checklist:
 
-- [ ] Move final Sendspin adapter implementation to `sendspin_service/sendspin.py`.
-- [ ] Keep `sendspin_service/server.py` as the HTTP ingest API.
-- [ ] Keep `sendspin_service/audio_queue.py` owned by the service.
-- [ ] Ensure `/health`, `/v1/play`, and `/v1/stop` work without importing plugin modules.
-- [ ] Add `version` to `/health`.
+- [x] Add a first Sendspin adapter implementation to `sendspin_service/sendspin.py`.
+- [x] Keep `sendspin_service/server.py` as the HTTP ingest API.
+- [x] Keep `sendspin_service/audio_queue.py` owned by the service.
+- [x] Avoid importing RotorHazard plugin modules from `sendspin_service`.
+- [x] Add `version` to `/health`.
+- [ ] Smoke-test `/health`, `/v1/play`, and `/v1/stop` outside the sandbox.
 - [ ] Add clear startup errors for port conflicts on `8766` and `8927`.
 - [ ] Keep ingest body limit configurable with `SENDSPIN_MAX_BODY_MB`.
 

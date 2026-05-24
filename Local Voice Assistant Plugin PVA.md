@@ -614,6 +614,12 @@ and expiry. Sendspin services are output targets.
 - [ ] Track detailed package work in `Sendspin Service Package PVA.md`
 
 #### Sendspin server API
+Current migration state: `sendspin_service/` has its own `audio_queue.py`,
+`sendspin.py`, and `server.py` so the service can evolve independently while
+the plugin still keeps the internal Sendspin path as a fallback. This temporary
+duplication is intentional until the service package and HTTP output path are
+tested end to end.
+
 - [x] Create Sendspin server entrypoint under root-level `sendspin_service/`, separate from RotorHazard plugin initialization
 - [x] Server starts `SendSpinServer` and exposes an HTTP ingest API
 - [x] `GET /health` returns server status, Sendspin listen port, and connected player count when available

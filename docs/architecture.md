@@ -96,7 +96,7 @@ can interact with it without knowing about asyncio.
 
 Key design points:
 - Consecutive `play()` calls append to the active stream rather than restarting it, so back-to-back lap callouts play without audible resets or gaps.
-- Jobs may provide a `play_at` monotonic timestamp for time-sensitive static sounds, such as staging tones from `Evt.RACE_STAGE_TONE`.
+- Jobs may provide a `play_at` monotonic timestamp for time-sensitive static sounds. Staging tones use `scheduled_at_monotonic` from `Evt.RACE_STAGE_TONE`; the race-start buzzer uses `rhapi.race.start_time_internal` from the race state.
 - Late-joining browser clients are synced into the active stream group so they receive audio already in progress.
 - The stream is torn down automatically after the last queued clip finishes playing (idle-stop task).
 

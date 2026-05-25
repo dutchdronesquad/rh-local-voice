@@ -1,29 +1,29 @@
-# Debian Packaging Skeleton
+# Debian Package Files
 
-This directory defines the planned Debian package shape for the Sendspin service.
+This directory contains Debian-specific package assets for `sendspin-service`.
 
-The package is expected to install a self-contained service executable at:
+Package metadata and file mapping live in `packaging/nfpm.yaml`. The build script stages a bundled CPython runtime, service dependencies, service code, and launcher under `build/sendspin-service/`, then calls `nfpm`.
 
-```text
-/opt/sendspin-service/bin/sendspin-service
-```
-
-The first executable build path uses PyInstaller and `dpkg-deb`:
+Build:
 
 ```shell
-uv run --with pyinstaller python -m tools.build_sendspin_service_deb
+uv run python -m tools.build_sendspin_service_deb
 ```
 
-The script writes build intermediates under `build/sendspin-service/` and the resulting package under `dist/`.
+Target install layout:
 
-This PyInstaller path is an experimental packaging validation path, not the final production packaging decision. Before release, compare it with Nuitka and a bundled CPython/app-runtime layout.
+```text
+/opt/sendspin-service/runtime/
+/opt/sendspin-service/app/
+/opt/sendspin-service/bin/sendspin-service
+/etc/default/sendspin-service
+/lib/systemd/system/sendspin-service.service
+```
 
-Target package behavior:
+Expected package behavior:
 
 - install package name `sendspin-service`
-- install default config at `/etc/default/sendspin-service`
-- install systemd unit at `/lib/systemd/system/sendspin-service.service`
-- start and enable the service after install
-- preserve `/etc/default/sendspin-service` during upgrades
-- stop the service on remove
-- remove config and state on purge, including the DynamicUser private state path
+- enable and restart `sendspin-service` after install/upgrade
+- preserve `/etc/default/sendspin-service` on upgrade
+- stop and disable the service on remove
+- remove config and systemd state on purge

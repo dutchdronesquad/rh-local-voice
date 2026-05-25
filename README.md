@@ -35,7 +35,7 @@
 
 <p align="center">
   Local Voice generates RotorHazard announcements on the timing server, caches reusable WAV files,
-  and streams playback to one or more Sendspin clients over the local network.
+  and sends playback to a local Sendspin service for network clients.
 </p>
 
 <p align="center">
@@ -44,12 +44,12 @@
 
 # Local Voice
 
-Server-side voice callouts for the [RotorHazard] timing platform, powered by [Piper TTS]. Audio is generated locally on the RotorHazard server and streamed to connected clients over the network using the [Sendspin] protocol — no cloud services required.
+Server-side voice callouts for the [RotorHazard] timing platform, powered by [Piper TTS]. Audio is generated locally on the RotorHazard server and sent to `sendspin-service`, which streams to connected clients using the [Sendspin] protocol — no cloud services required.
 
 ## What you can do
 
 - 🎙️ **Local TTS**: Generates voice callouts with [Piper TTS] entirely on-device.
-- 📡 **Sendspin streaming**: Streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
+- 📡 **Sendspin service playback**: Sends generated WAV files to a local service that streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
 - 🌐 **Browser player**: A built-in web player accessible at `/player`.
 - 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
 - ⚡ **Smart caching**: Reusable pilot-name and lap-number segments are cached separately; use **Rebuild pre-cache** after startup or voice model/settings changes to prepare them ahead of racing.
@@ -58,6 +58,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 
 - [RotorHazard] with RHAPI plugin support.
 - Python 3.12 or newer.
+- `sendspin-service` installed on the RotorHazard host or another reachable machine.
 - Network access from playback clients to the RotorHazard server.
 - A browser on the playback device. The plugin serves its own Sendspin player at `/player`.
 
@@ -66,10 +67,12 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 1. Download the plugin ZIP from the latest GitHub release.
 2. In RotorHazard, open the plugin manager and upload the ZIP file.
 3. Restart RotorHazard if requested.
-4. Open the RotorHazard settings page and enable **Local Voice**.
-5. Open `/player` from the RotorHazard host on the playback device.
-6. Use **Rebuild pre-cache** to prepare schedule, pilot-name, and lap-number WAV files.
-7. Use **Generate test phrase** or **Play audio check** to verify playback.
+4. Install and start `sendspin-service`.
+5. Open the RotorHazard settings page and enable **Local Voice**.
+6. Confirm **Sendspin service URL** points to the service, normally `http://127.0.0.1:8766`.
+7. Open `/player` from the RotorHazard host on the playback device.
+8. Use **Rebuild pre-cache** to prepare schedule, pilot-name, and lap-number WAV files.
+9. Use **Generate test phrase** or **Play audio check** to verify playback.
 
 The first generated phrase for a voice model downloads the Piper model into the RotorHazard data cache. That can take a moment depending on the server and network connection.
 

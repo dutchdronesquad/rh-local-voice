@@ -1,41 +1,35 @@
 # Usage Guide
 
-This guide covers day-to-day setup and operation for Local Voice.
+Local Voice generates RotorHazard callout WAV files on the timing server and sends them to `sendspin-service` over local HTTP. The service owns the Sendspin player endpoint on port `8927`; the plugin does not start its own Sendspin server.
 
-## Basic Setup
+## Setup
 
-1. In RotorHazard, open **Settings** -> **Local Voice**.
-2. Enable **Plugin audio**.
-3. Choose a voice model and adjust the speech parameters if needed.
-4. Open `/player` from the RotorHazard host in a browser tab on the playback device, for example `http://rotorhazard.local:5000/player`.
-5. Set normal RotorHazard browser Voice Volume to `0` on clients that should only use Local Voice audio.
-6. Use **Generate test phrase** or **Play audio check** to verify playback.
+1. Install and start `sendspin-service`.
+2. In RotorHazard, open **Settings** -> **Local Voice**.
+3. Enable **Plugin audio**.
+4. Confirm **Sendspin service URL** is `http://127.0.0.1:8766`.
+5. Choose a voice model and speech settings.
+6. Open `/player` from the RotorHazard host on the playback device, for example `http://rotorhazard.local:5000/player`.
+7. Set normal RotorHazard browser Voice Volume to `0` on clients that should not play duplicate built-in callouts.
+8. Use **Generate test phrase** or **Play audio check**.
 
-The current plugin release still owns the local Sendspin server inside the RotorHazard plugin process. The standalone Sendspin service described below is migration work and is not the default user-facing playback path until the plugin HTTP output layer is connected.
+## Sendspin Service
 
-## Standalone Sendspin Service
-
-The planned local playback path is a separate service package named `sendspin-service`. In the target architecture, the plugin generates and caches WAV files, then sends playback jobs to the service over local HTTP.
-
-The repository now contains a first standalone service implementation under `sendspin_service/`. It owns its own `AudioQueue` and Sendspin server adapter so the migration can proceed without importing RotorHazard plugin modules.
-
-Current development command:
+Install target:
 
 ```shell
-python -m sendspin_service
+sudo apt install ./sendspin-service_0.1.0_arm64.deb
 ```
 
-Useful development flags:
+Common checks:
 
 ```shell
-python -m sendspin_service \
-  --host 127.0.0.1 \
-  --port 8766 \
-  --sendspin-host 0.0.0.0 \
-  --sendspin-port 8927
+systemctl status sendspin-service
+curl http://127.0.0.1:8766/health
+journalctl -u sendspin-service -n 80 --no-pager
 ```
 
-The same values can be provided through environment variables, matching the planned systemd `/etc/default/sendspin-service` file:
+Default config is stored in `/etc/default/sendspin-service`:
 
 ```shell
 SENDSPIN_INGEST_HOST=127.0.0.1
@@ -46,106 +40,92 @@ SENDSPIN_ADVERTISE=true
 SENDSPIN_MAX_BODY_MB=50
 ```
 
-`SENDSPIN_MAX_BODY_MB` can adjust the ingest request limit up to the built-in 100 MiB cap. The service accepts JSON file paths, not uploaded audio data, so the default is intentionally conservative.
+The service API accepts inline WAV payloads via `wav_files`. It does not accept filesystem paths. This keeps the packaged service independent of RotorHazard/plugin directory permissions while running with `DynamicUser=yes`.
 
-Target user install:
-
-```shell
-sudo apt install ./sendspin-service_0.1.0_arm64.deb
-```
-
-Useful endpoints:
-
-- `GET /health`: service status, version, Sendspin port, and connected player count.
-- `POST /v1/play`: queues one or more WAV paths for playback.
-- `POST /v1/stop`: stops current playback.
-
-Example playback payload:
-
-```json
-{
-  "text": "race callout",
-  "wav_paths": ["/home/pi/rh-data/local_voice_cache/tts/example.wav"],
-  "priority": "normal",
-  "expiry_sec": 5.0,
-  "play_at": null,
-  "volume": 1.0
-}
-```
-
-Packaging work is tracked in `Sendspin Service Package PVA.md`. The repository also contains a Debian package skeleton under `packaging/deb/`. That skeleton defines the planned systemd unit, default config, and maintainer script behavior. The experimental build script below combines that skeleton with a PyInstaller executable.
-
-Maintainers can build the first experimental Debian package with:
+Manual playback test:
 
 ```shell
-uv run --with pyinstaller python -m tools.build_sendspin_service_deb
+python - <<'PY'
+import base64
+import json
+import urllib.request
+
+wav_data = base64.b64encode(
+    open("custom_plugins/local_voice/assets/moavii-foreign.wav", "rb").read()
+).decode("ascii")
+payload = json.dumps({
+    "text": "audio check",
+    "wav_files": [{"name": "moavii-foreign.wav", "data": wav_data}],
+    "priority": "high",
+    "volume": 1.0,
+}).encode("utf-8")
+request = urllib.request.Request(
+    "http://127.0.0.1:8766/v1/play",
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+print(urllib.request.urlopen(request).read().decode("utf-8"))
+PY
 ```
 
-The script builds a PyInstaller executable and writes the `.deb` to `dist/`. This validates the package shape but is not yet the final production packaging decision. For local install testing, copy the package to `/tmp` first so `apt` can read it through its `_apt` sandbox user:
+## Package Build
+
+Maintainer build requirements: `uv`, `nfpm`, and a local Python 3.11+ interpreter for the build script.
+
+```shell
+python -m tools.build_sendspin_service_deb
+```
+
+Build for a specific architecture on a matching runner:
+
+```shell
+python -m tools.build_sendspin_service_deb --architecture arm64
+```
+
+For local install testing, copy the `.deb` to `/tmp` first so `apt` can read it through its `_apt` sandbox user:
 
 ```shell
 cp dist/sendspin-service_0.1.0_amd64.deb /tmp/
 sudo apt install /tmp/sendspin-service_0.1.0_amd64.deb
 ```
 
+Reinstall the same local version:
+
+```shell
+sudo apt install --reinstall /tmp/sendspin-service_0.1.0_amd64.deb
+```
+
 ## Settings
 
 - **Enable plugin audio**: Turns Local Voice callout generation on or off.
-- **Voice model**: Selects the Piper voice model. Models are downloaded once and reused.
-- **Speech speed**: Controls speaking rate. `1.0` is Piper default; lower is slower, higher is faster.
-- **Noise scale**: Controls voice variation. Lower values are more monotone; higher values are more expressive.
-- **Phoneme width noise**: Controls duration variation between phonemes.
-- **Test phrase**: Phrase used by the **Generate test phrase** button.
-
-## Quick Buttons
-
-- **Generate test phrase**: Generates and queues the configured test phrase.
-- **Play audio check**: Plays a bundled music clip through the Sendspin path.
-- **Stop audio**: Stops Sendspin playback and clears queued audio.
-- **Clear TTS cache**: Deletes all cached WAV files for the selected voice model.
-
-## Browser Player
-
-The built-in browser player is served by the plugin at `/player`. It connects to Sendspin over WebSocket and plays streamed PCM audio in the browser.
-
-During local testing, Safari on macOS produced the smoothest browser playback. Chrome can work well too, but browser extensions may add console noise or small timing interruptions. If playback jitter appears in Chrome, test once in an incognito window with extensions disabled before debugging the server.
+- **Sendspin service URL**: Local HTTP endpoint for `sendspin-service`. Default: `http://127.0.0.1:8766`.
+- **Sendspin service timeout**: HTTP timeout for queue/stop requests to `sendspin-service`.
+- **Voice model**: Piper voice model. Models are downloaded once and reused.
+- **Speech speed**: Speaking rate. `1.0` is Piper default.
+- **Noise scale**: Voice variation.
+- **Phoneme width noise**: Duration variation between phonemes.
+- **Test phrase**: Phrase generated by the **Generate test phrase** button.
 
 ## Cache Layout
 
-Local Voice stores generated files under the RotorHazard data directory:
+Generated files live under the RotorHazard data directory:
 
 ```text
 local_voice_cache/
   models/                 downloaded Piper ONNX models
-  tts/<model>/            normal cached phrases
-  tts/<model>/precache/pilots/
-                           pre-generated pilot-name segments
-  tts/<model>/precache/laps/
-                           pre-generated "Lap [n]" segments
-  tts/<model>/precache/schedule/
-                           scheduled-race countdown phrases
+  tts/<model>/            cached phrases
+  tts/<model>/precache/   reusable pilot, lap, and schedule phrases
   tts/<model>/tmp/        ephemeral lap-time phrases
   tts/<model>/test/       generated test phrases
 ```
 
-Cache behavior:
-
-- `tmp/` is cleared whenever a heat is selected.
-- `precache/` keeps existing reusable phrases. Use **Rebuild pre-cache** to generate schedule phrases, current-heat pilot-name segments, and lap-number segments on demand.
-- `tmp/` and `precache/` are cleared on RotorHazard data reset.
-- **Clear TTS cache** removes all WAV files for the selected model.
-
-## Operational Notes
-
-- Local Voice does not disable RotorHazard's built-in browser speech. Set Voice Volume to `0` on regular RotorHazard browser clients to avoid duplicate callouts.
-- The first use of a voice model requires internet access to download model files. Racing can run offline after the selected model has been cached.
-- Callouts are generated server-side; browser-specific RotorHazard voice settings do not affect Local Voice output.
-- If no Sendspin browser player is connected, generated audio is dropped and logged.
+Use **Rebuild pre-cache** after startup or voice setting changes to prepare current-heat pilot names, lap segments, and schedule phrases.
 
 ## Troubleshooting
 
-- **No audio in the browser player**: confirm that `/player` is open, connected to the correct host, and that port `8927` is reachable from the playback device.
-- **Standalone service is not reachable during migration testing**: confirm `python -m sendspin_service` is running and `GET /health` works on `http://127.0.0.1:8766`.
-- **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in all regular RotorHazard browser clients.
-- **First phrase is slow**: the selected Piper model may be downloading or loading. Watch the RotorHazard log for Local Voice status messages.
-- **Browser playback stutters**: try Safari or a Chrome incognito window with extensions disabled, then validate on the actual race network.
+- **No audio in `/player`**: confirm `sendspin-service` is running, port `8927` is reachable from the playback device, and the player is connected.
+- **Service unreachable**: confirm `curl http://127.0.0.1:8766/health` works from the RotorHazard host.
+- **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in regular RotorHazard browser clients.
+- **First phrase is slow**: the selected Piper model may still be downloading or loading.
+- **Browser playback stutters**: test Safari or Chrome incognito with extensions disabled, then validate on the race network.

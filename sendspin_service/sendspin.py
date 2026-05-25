@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import logging
 import threading
 import time
@@ -11,16 +12,16 @@ import wave
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-import numpy as np
 from aiosendspin.server import AudioFormat
 from aiosendspin.server import SendspinServer as AioSendspinServer
 from aiosendspin.server.push_stream import MAIN_CHANNEL, StreamStoppedError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
-    from pathlib import Path
 
     from aiosendspin.server.group import SendspinGroup
+
+    from .audio_queue import WavItem
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class _StreamOptions:
 
 @dataclass(frozen=True)
 class _WavClip:
-    path: Path
+    name: str
     audio_format: AudioFormat
     pcm_data: bytes
     duration_s: float
@@ -144,7 +145,7 @@ class SendSpinServer:
 
     def play(
         self,
-        wav_paths: list[Path],
+        wav_items: list[WavItem],
         expires_at: float | None = None,
         play_at: float | None = None,
         volume: float = 1.0,
@@ -162,7 +163,7 @@ class SendSpinServer:
             )
             return
 
-        clips = _read_wav_clips(wav_paths)
+        clips = _read_wav_clips(wav_items)
         if not clips:
             logger.warning("Sendspin service: no readable WAV files to play")
             return
@@ -568,11 +569,11 @@ async def _stream_wav(
     audio_format = clip.audio_format
     pcm_data = clip.pcm_data
     if not pcm_data:
-        logger.warning("Sendspin service: empty WAV skipped: %s", clip.path.name)
+        logger.warning("Sendspin service: empty WAV skipped: %s", clip.name)
         return play_start_us, None, client_count
     bytes_per_frame = audio_format.channels * (audio_format.bit_depth // 8)
     if len(pcm_data) % bytes_per_frame:
-        logger.warning("Sendspin service: misaligned WAV skipped: %s", clip.path.name)
+        logger.warning("Sendspin service: misaligned WAV skipped: %s", clip.name)
         return play_start_us, None, client_count
     pcm_data = _scale_pcm(pcm_data, audio_format.bit_depth // 8, options.volume)
     if options.full_clip:
@@ -605,59 +606,60 @@ def _scale_pcm(pcm_data: bytes, sample_width: int, volume: float) -> bytes:
     if volume <= 0.0:
         return bytes(len(pcm_data))
     if sample_width == 2:
-        return _scale_pcm_int(pcm_data, np.dtype("<i2"), volume)
+        return _scale_pcm_int(pcm_data, sample_width, -0x8000, 0x7FFF, volume)
     if sample_width == 3:
-        return _scale_pcm_int24(pcm_data, volume)
+        return _scale_pcm_int(pcm_data, sample_width, -0x800000, 0x7FFFFF, volume)
     if sample_width == 4:
-        return _scale_pcm_int(pcm_data, np.dtype("<i4"), volume)
+        return _scale_pcm_int(pcm_data, sample_width, -0x80000000, 0x7FFFFFFF, volume)
     logger.warning("Sendspin service: cannot apply volume to %s-byte PCM", sample_width)
     return pcm_data
 
 
-def _scale_pcm_int(pcm_data: bytes, dtype: np.dtype, volume: float) -> bytes:
-    samples = np.frombuffer(pcm_data, dtype=dtype)
-    info = np.iinfo(dtype)
-    scaled = samples.astype(np.float32)
-    np.multiply(scaled, volume, out=scaled)
-    np.clip(scaled, info.min, info.max, out=scaled)
-    return scaled.astype(dtype).tobytes()
+def _scale_pcm_int(
+    pcm_data: bytes,
+    sample_width: int,
+    min_value: int,
+    max_value: int,
+    volume: float,
+) -> bytes:
+    scaled = bytearray(len(pcm_data))
+    for offset in range(0, len(pcm_data), sample_width):
+        sample = int.from_bytes(
+            pcm_data[offset : offset + sample_width],
+            byteorder="little",
+            signed=True,
+        )
+        value = max(min(int(sample * volume), max_value), min_value)
+        scaled[offset : offset + sample_width] = value.to_bytes(
+            sample_width,
+            byteorder="little",
+            signed=True,
+        )
+    return bytes(scaled)
 
 
-def _scale_pcm_int24(pcm_data: bytes, volume: float) -> bytes:
-    frames = np.frombuffer(pcm_data, dtype=np.uint8).reshape(-1, 3)
-    samples = (
-        frames[:, 0].astype(np.int32)
-        | (frames[:, 1].astype(np.int32) << 8)
-        | (frames[:, 2].astype(np.int32) << 16)
-    )
-    samples = np.where(samples & 0x800000, samples - 0x1000000, samples)
-    scaled = samples.astype(np.float32)
-    np.multiply(scaled, volume, out=scaled)
-    np.clip(scaled, -0x800000, 0x7FFFFF, out=scaled)
-    scaled = scaled.astype(np.int32)
-    packed = np.empty((scaled.size, 3), dtype=np.uint8)
-    unsigned = scaled & 0xFFFFFF
-    packed[:, 0] = unsigned & 0xFF
-    packed[:, 1] = (unsigned >> 8) & 0xFF
-    packed[:, 2] = (unsigned >> 16) & 0xFF
-    return packed.tobytes()
-
-
-def _read_wav_clips(wav_paths: list[Path]) -> list[_WavClip]:
+def _read_wav_clips(wav_items: list[WavItem]) -> list[_WavClip]:
     """Read WAV files once and return clips ready for scheduling and streaming."""
-    return [clip for wav_path in wav_paths if (clip := _read_wav(wav_path))]
+    return [clip for item in wav_items if (clip := _read_wav(item))]
 
 
-def _read_wav(wav_path: Path) -> _WavClip | None:
-    """Read a WAV file as PCM bytes plus metadata for Sendspin playback."""
+def _read_wav(item: WavItem) -> _WavClip | None:
+    """Read a WAV item as PCM bytes plus metadata for Sendspin playback."""
     try:
-        with wave.open(str(wav_path), "rb") as wav_file:
+        wav_source = io.BytesIO(item.data) if item.data is not None else item.path
+        if wav_source is None:
+            logger.warning(
+                "Sendspin service: WAV item has no data or path: %s",
+                item.name,
+            )
+            return None
+        with wave.open(wav_source, "rb") as wav_file:
             sample_width = wav_file.getsampwidth()
             if sample_width not in {2, 3, 4}:
                 logger.warning(
                     "Sendspin service: unsupported WAV sample width %s: %s",
                     sample_width,
-                    wav_path.name,
+                    item.name,
                 )
                 return None
             frame_count = wav_file.getnframes()
@@ -668,11 +670,11 @@ def _read_wav(wav_path: Path) -> _WavClip | None:
                 channels=wav_file.getnchannels(),
             )
             return _WavClip(
-                path=wav_path,
+                name=item.name,
                 audio_format=audio_format,
                 pcm_data=wav_file.readframes(frame_count),
                 duration_s=frame_count / sample_rate,
             )
     except Exception:
-        logger.exception("Sendspin service: cannot read WAV: %s", wav_path.name)
+        logger.exception("Sendspin service: cannot read WAV: %s", item.name)
         return None

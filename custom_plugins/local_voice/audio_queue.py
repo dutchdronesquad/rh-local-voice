@@ -49,7 +49,11 @@ class AudioQueue:
     """
 
     def __init__(
-        self, player: Callable[[list[Path], float, float | None, float], None]
+        self,
+        player: Callable[
+            [str, list[Path], Priority, float | None, float | None, float],
+            None,
+        ],
     ) -> None:
         """Start the background worker thread."""
         self._player = player
@@ -104,7 +108,14 @@ class AudioQueue:
                     job.priority.name,
                     ", ".join(p.name for p in job.wav_paths),
                 )
-                self._player(job.wav_paths, job.expires_at, job.play_at, job.volume)
+                self._player(
+                    job.text,
+                    job.wav_paths,
+                    job.priority,
+                    job.expires_at,
+                    job.play_at,
+                    job.volume,
+                )
             except Exception:
                 logger.exception("Local Voice worker error for '%s'", job.text)
             finally:

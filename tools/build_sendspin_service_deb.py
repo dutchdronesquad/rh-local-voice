@@ -1,39 +1,57 @@
-"""Build a self-contained Sendspin service Debian package."""
+"""Build a bundled-runtime Sendspin service Debian package.
+
+Subcommands
+-----------
+prepare  Stage the bundled CPython runtime and app directory under build/.
+         Requires uv. Safe to cache in CI between runs.
+package  Call nfpm to produce the .deb from the staged build directory.
+         Requires nfpm. Fast; no Python or uv needed.
+build    Run prepare then package in one step (default when omitted).
+"""
 
 from __future__ import annotations
 
 import argparse
+import functools
 import logging
 import os
 import platform
 import shutil
 import subprocess
-import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 PACKAGE_NAME = "sendspin-service"
+PYTHON_VERSION = "3.13"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BUILD_ROOT = PROJECT_ROOT / "build" / PACKAGE_NAME
 DIST_ROOT = PROJECT_ROOT / "dist"
-DEB_SOURCE = PROJECT_ROOT / "packaging" / "deb"
-PYINSTALLER_ENTRY = BUILD_ROOT / "pyinstaller" / "sendspin_service_entry.py"
+NFPM_CONFIG = PROJECT_ROOT / "packaging" / "nfpm.yaml"
+APP_BUILD_ROOT = BUILD_ROOT / "app"
+RUNTIME_ROOT = BUILD_ROOT / "runtime"
+BIN_ROOT = BUILD_ROOT / "bin"
+UV = shutil.which("uv") or "uv"
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class PackageMeta:
-    """Debian package metadata used by the build script."""
+    """Debian package metadata passed to nfpm."""
 
     name: str
     version: str
     architecture: str
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
 def main() -> int:
-    """Run the package build."""
+    """Run the requested package build step."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = _parse_args()
     meta = PackageMeta(
@@ -41,44 +59,247 @@ def main() -> int:
         version=_package_version(),
         architecture=args.architecture or _debian_architecture(),
     )
-    _check_tool("dpkg-deb")
-    _check_pyinstaller()
 
-    if args.clean:
-        shutil.rmtree(BUILD_ROOT, ignore_errors=True)
-    DIST_ROOT.mkdir(exist_ok=True)
+    if args.command in ("prepare", "build"):
+        _check_tool("uv")
+        if args.clean:
+            shutil.rmtree(BUILD_ROOT, ignore_errors=True)
+        runtime_python = _uv_python(args.python_version)
+        _build_app(runtime_python)
+        _prepare_bundle(runtime_python)
 
-    binary = _build_binary()
-    deb_root = _stage_deb_root(binary, meta)
-    output = DIST_ROOT / f"{meta.name}_{meta.version}_{meta.architecture}.deb"
-    if output.exists():
-        output.unlink()
-    _run(["dpkg-deb", "--build", "--root-owner-group", str(deb_root), str(output)])
-    _print_size_report(output, deb_root)
+    if args.command in ("package", "build"):
+        _check_tool("nfpm")
+        DIST_ROOT.mkdir(exist_ok=True)
+        output = _package(meta)
+        _print_size_report(output, BUILD_ROOT)
+
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build the Sendspin service executable and Debian package"
+        description="Build the Sendspin service bundled-runtime Debian package",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    _add_shared_args(parser)
+    _add_prepare_args(parser)
+
+    shared = argparse.ArgumentParser(add_help=False)
+    _add_shared_args(shared)
+
+    prepare_shared = argparse.ArgumentParser(add_help=False)
+    _add_prepare_args(prepare_shared)
+
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser(
+        "prepare",
+        parents=[shared, prepare_shared],
+        help="Stage the bundle under build/ (requires uv)",
+    )
+    subparsers.add_parser(
+        "package",
+        parents=[shared],
+        help="Package the staged bundle into a .deb (requires nfpm)",
+    )
+    subparsers.add_parser(
+        "build",
+        parents=[shared, prepare_shared],
+        help="Run prepare then package in one step (default)",
+    )
+
+    args = parser.parse_args()
+    if args.command is None:
+        args.command = "build"
+    if not hasattr(args, "clean"):
+        args.clean = True
+    if not hasattr(args, "python_version"):
+        args.python_version = PYTHON_VERSION
+    return args
+
+
+def _add_shared_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--architecture",
         help="Debian architecture override, for example amd64 or arm64",
     )
+
+
+def _add_prepare_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-clean",
         action="store_false",
         dest="clean",
+        default=True,
         help="Reuse the existing build directory",
     )
-    parser.set_defaults(clean=True)
-    return parser.parse_args()
+    parser.add_argument(
+        "--python-version",
+        default=PYTHON_VERSION,
+        help=f"Python runtime version to bundle, defaults to {PYTHON_VERSION}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Prepare step: runtime + app bundle
+# ---------------------------------------------------------------------------
+
+
+def _build_app(runtime_python: Path) -> None:
+    APP_BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+    _run(
+        [
+            UV,
+            "pip",
+            "install",
+            "--python",
+            str(runtime_python),
+            "--target",
+            str(APP_BUILD_ROOT),
+            *_service_dependencies(),
+        ]
+    )
+    shutil.copytree(
+        PROJECT_ROOT / "sendspin_service",
+        APP_BUILD_ROOT / "sendspin_service",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        dirs_exist_ok=True,
+    )
+
+
+def _uv_python(python_version: str) -> Path:
+    _run([UV, "python", "install", python_version])
+    result = subprocess.run(  # noqa: S603
+        [UV, "python", "find", python_version],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    python = Path(result.stdout.strip())
+    if not python.exists():
+        message = f"uv did not return an existing Python interpreter: {python}"
+        raise RuntimeError(message)
+    return python
+
+
+def _prepare_bundle(runtime_python: Path) -> None:
+    shutil.rmtree(RUNTIME_ROOT, ignore_errors=True)
+    shutil.copytree(runtime_python.parent.parent, RUNTIME_ROOT, symlinks=True)
+    _prune_runtime(RUNTIME_ROOT)
+    _prune_app(APP_BUILD_ROOT)
+    _remove_cache_files(BUILD_ROOT)
+    _write_launcher(BIN_ROOT / PACKAGE_NAME, runtime_python.name)
+
+
+def _prune_runtime(runtime_root: Path) -> None:
+    for directory in (
+        runtime_root / "include",
+        runtime_root / "share",
+        runtime_root / "lib" / "pkgconfig",
+    ):
+        shutil.rmtree(directory, ignore_errors=True)
+    for pattern in ("tcl*", "tk*", "Tix*", "itcl*", "thread*"):
+        for directory in (runtime_root / "lib").glob(pattern):
+            shutil.rmtree(directory, ignore_errors=True)
+
+    version_dirs = sorted((runtime_root / "lib").glob("python3.*"))
+    for version_dir in version_dirs:
+        for directory in (
+            "__phello__",
+            "ensurepip",
+            "idlelib",
+            "lib2to3",
+            "pydoc_data",
+            "test",
+            "tkinter",
+            "turtledemo",
+            "unittest",
+            "venv",
+        ):
+            shutil.rmtree(version_dir / directory, ignore_errors=True)
+        for config_dir in version_dir.glob("config-*"):
+            shutil.rmtree(config_dir, ignore_errors=True)
+
+    for executable in ("2to3*", "idle*", "pydoc*", "python*-config"):
+        for path in (runtime_root / "bin").glob(executable):
+            path.unlink(missing_ok=True)
+
+
+def _prune_app(app_root: Path) -> None:
+    for directory_name in ("tests", "_pyinstaller"):
+        for directory in app_root.rglob(directory_name):
+            shutil.rmtree(directory, ignore_errors=True)
+
+
+def _remove_cache_files(root: Path) -> None:
+    for cache_dir in root.rglob("__pycache__"):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+    for compiled_file in root.rglob("*.pyc"):
+        compiled_file.unlink(missing_ok=True)
+
+
+def _write_launcher(target: Path, python_name: str) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        f"""#!/bin/sh
+set -eu
+export PYTHONHOME=/opt/{PACKAGE_NAME}/runtime
+export PYTHONPATH=/opt/{PACKAGE_NAME}/app
+exec /opt/{PACKAGE_NAME}/runtime/bin/{python_name} -m sendspin_service "$@"
+""",
+        encoding="utf-8",
+    )
+    target.chmod(0o755)
+
+
+# ---------------------------------------------------------------------------
+# Package step: nfpm
+# ---------------------------------------------------------------------------
+
+
+def _package(meta: PackageMeta) -> Path:
+    env = os.environ.copy()
+    env["VERSION"] = meta.version
+    env["ARCH"] = meta.architecture
+    env.setdefault("PYTHONUTF8", "1")
+    _run(
+        [
+            "nfpm",
+            "package",
+            "--config",
+            str(NFPM_CONFIG),
+            "--packager",
+            "deb",
+            "--target",
+            str(DIST_ROOT),
+        ],
+        extra_env=env,
+    )
+    return DIST_ROOT / f"{meta.name}_{meta.version}_{meta.architecture}.deb"
+
+
+# ---------------------------------------------------------------------------
+# Shared utilities
+# ---------------------------------------------------------------------------
 
 
 def _package_version() -> str:
-    pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
-    return str(pyproject["project"]["version"])
+    return str(_pyproject()["project"]["version"])
+
+
+def _service_dependencies() -> list[str]:
+    dependencies = _pyproject()["project"]["optional-dependencies"][PACKAGE_NAME]
+    return [str(dependency) for dependency in dependencies]
+
+
+@functools.lru_cache(maxsize=1)
+def _pyproject() -> dict[str, object]:
+    return tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
 
 
 def _debian_architecture() -> str:
@@ -107,147 +328,17 @@ def _check_tool(command: str) -> None:
         raise RuntimeError(message)
 
 
-def _check_pyinstaller() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--version"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        message = (
-            "PyInstaller is not installed. Run: "
-            "uv run --with pyinstaller python -m tools.build_sendspin_service_deb"
-        )
-        raise RuntimeError(message)
-
-
-def _build_binary() -> Path:
-    pyinstaller_root = BUILD_ROOT / "pyinstaller"
-    dist_path = pyinstaller_root / "dist"
-    binary = dist_path / PACKAGE_NAME
-    _write_pyinstaller_entry(PYINSTALLER_ENTRY)
-    _run(
-        [
-            sys.executable,
-            "-m",
-            "PyInstaller",
-            "--onefile",
-            "--clean",
-            "--noconfirm",
-            "--name",
-            PACKAGE_NAME,
-            "--distpath",
-            str(dist_path),
-            "--workpath",
-            str(pyinstaller_root / "work"),
-            "--specpath",
-            str(pyinstaller_root / "spec"),
-            str(PYINSTALLER_ENTRY),
-        ]
-    )
-    if not binary.exists():
-        message = f"PyInstaller did not produce expected binary: {binary}"
-        raise RuntimeError(message)
-    return binary
-
-
-def _write_pyinstaller_entry(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        '''"""Generated PyInstaller entry point."""
-
-from __future__ import annotations
-
-from sendspin_service.server import main
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-''',
-        encoding="utf-8",
-    )
-
-
-def _stage_deb_root(binary: Path, meta: PackageMeta) -> Path:
-    deb_root = BUILD_ROOT / "debroot"
-    shutil.rmtree(deb_root, ignore_errors=True)
-    _copy_executable(binary, deb_root / "opt" / PACKAGE_NAME / "bin" / PACKAGE_NAME)
-    _copy_file(
-        DEB_SOURCE / "sendspin-service.default",
-        deb_root / "etc" / "default" / PACKAGE_NAME,
-        mode=0o644,
-    )
-    _copy_file(
-        DEB_SOURCE / "sendspin-service.service",
-        deb_root / "lib" / "systemd" / "system" / f"{PACKAGE_NAME}.service",
-        mode=0o644,
-    )
-
-    debian_dir = deb_root / "DEBIAN"
-    debian_dir.mkdir(parents=True, exist_ok=True)
-    _write_control(debian_dir / "control", meta, deb_root)
-    for script_name in ("postinst", "prerm", "postrm"):
-        _copy_file(DEB_SOURCE / script_name, debian_dir / script_name, mode=0o755)
-    return deb_root
-
-
-def _copy_executable(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-    target.chmod(0o755)
-
-
-def _copy_file(source: Path, target: Path, *, mode: int) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-    target.chmod(mode)
-
-
-def _write_control(target: Path, meta: PackageMeta, deb_root: Path) -> None:
-    source = (DEB_SOURCE / "control").read_text()
-    installed_size_kib = _installed_size_kib(deb_root)
-    lines = []
-    wrote_installed_size = False
-    for line in source.splitlines():
-        if line.startswith("Version:"):
-            lines.append(f"Version: {meta.version}")
-        elif line.startswith("Architecture:"):
-            lines.append(f"Architecture: {meta.architecture}")
-        elif line.startswith("Installed-Size:"):
-            lines.append(f"Installed-Size: {installed_size_kib}")
-            wrote_installed_size = True
-        else:
-            lines.append(line)
-    if not wrote_installed_size:
-        insert_at = _control_insert_index(lines)
-        lines.insert(insert_at, f"Installed-Size: {installed_size_kib}")
-    target.write_text("\n".join(lines) + "\n")
-    target.chmod(0o644)
-
-
-def _control_insert_index(lines: list[str]) -> int:
-    for index, line in enumerate(lines):
-        if line.startswith("Description:"):
-            return index
-    return len(lines)
-
-
 def _directory_size(path: Path) -> int:
-    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
-
-
-def _installed_size_kib(deb_root: Path) -> int:
-    payload_size = sum(
-        file.stat().st_size
-        for file in deb_root.rglob("*")
-        if file.is_file() and "DEBIAN" not in file.relative_to(deb_root).parts
+    return sum(
+        file.lstat().st_size
+        for file in path.rglob("*")
+        if file.is_file() or file.is_symlink()
     )
-    return (payload_size + 1023) // 1024
 
 
-def _print_size_report(output: Path, deb_root: Path) -> None:
+def _print_size_report(output: Path, bundle_root: Path) -> None:
     deb_size = output.stat().st_size
-    installed_size = _directory_size(deb_root)
+    installed_size = _directory_size(bundle_root)
     logger.info("Built: %s", output)
     logger.info(".deb size: %s", _format_bytes(deb_size))
     logger.info("Installed size: %s", _format_bytes(installed_size))
@@ -259,13 +350,15 @@ def _format_bytes(value: int) -> str:
         if size < 1024 or unit == "GiB":
             return f"{size:.1f} {unit}"
         size /= 1024
-    return f"{size:.1f} GiB"
+    return f"{size:.1f} GiB"  # unreachable, satisfies type checkers
 
 
-def _run(command: list[str]) -> None:
+def _run(command: list[str], *, extra_env: dict[str, str] | None = None) -> None:
     logger.info("+ %s", " ".join(command))
     env = os.environ.copy()
     env.setdefault("PYTHONUTF8", "1")
+    if extra_env:
+        env.update(extra_env)
     subprocess.run(command, cwd=PROJECT_ROOT, env=env, check=True)  # noqa: S603
 
 

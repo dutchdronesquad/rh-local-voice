@@ -1,0 +1,39 @@
+name: sendspin-service
+version: "${VERSION}"
+arch: "${ARCH}"
+maintainer: Dutch Drone Squad <info@dutchdronesquad.nl>
+description: |
+  Standalone Sendspin playback service with a local HTTP ingest API.
+  The service owns the Sendspin player endpoint and can be used by
+  local voice plugins or other producers that submit WAV playback jobs.
+section: sound
+priority: optional
+depends:
+  - systemd
+
+scripts:
+  postinstall: packaging/deb/postinst
+  preremove: packaging/deb/prerm
+  postremove: packaging/deb/postrm
+
+contents:
+  - src: build/sendspin-service/runtime/
+    dst: /opt/sendspin-service/runtime
+  - src: build/sendspin-service/app/
+    dst: /opt/sendspin-service/app
+  - src: build/sendspin-service/bin/sendspin-service
+    dst: /opt/sendspin-service/bin/sendspin-service
+    file_info:
+      mode: 0755
+  - src: packaging/deb/sendspin-service.service
+    dst: /lib/systemd/system/sendspin-service.service
+    file_info:
+      mode: 0644
+  - src: packaging/deb/sendspin-service.default
+    dst: /etc/default/sendspin-service
+    type: config|noreplace
+    file_info:
+      mode: 0644
+
+deb:
+  compression: xz

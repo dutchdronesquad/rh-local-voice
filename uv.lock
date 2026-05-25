@@ -303,6 +303,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'sendspin-service'", specifier = ">=12.2.0" },
     { name = "piper-tts", specifier = ">=1.4.2" },
 ]
+provides-extras = ["sendspin-service"]
 
 [package.metadata.requires-dev]
 dev = [

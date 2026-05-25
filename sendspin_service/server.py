@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SERVICE_VERSION = "0.1.0"
+SERVICE_VERSION = os.environ.get("SENDSPIN_SERVICE_VERSION", "0.0.0+dev")
 DEFAULT_API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8766
 DEFAULT_SENDSPIN_HOST = "0.0.0.0"  # noqa: S104

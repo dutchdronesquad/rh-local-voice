@@ -35,7 +35,7 @@ The plugin sends `/v1/play` requests with inline `wav_files` payloads. The servi
 
 Service endpoints:
 
-- `GET /health`
+- `GET /health`: service status, package `version`, Sendspin listen port, and connected player count.
 - `POST /v1/play`
 - `POST /v1/stop`
 

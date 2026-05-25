@@ -159,10 +159,8 @@ mode-switching complexity, competes for port `8927`, and couples Sendspin
 restarts to RotorHazard restarts. This path is superseded by the packaged local
 Sendspin service plan.
 
-Migration note: do not remove the internal implementation immediately. Keep it
-as a hidden/legacy fallback until the packaged service has passed Ubuntu
-`amd64` lifecycle tests, Raspberry Pi `arm64` install/race-flow tests, and open
-PRs touching `sendspin.py` have been resolved.
+Migration note: the plugin-side internal implementation has now been removed.
+Local playback goes through the packaged service HTTP API.
 
 ```
 RotorHazard plugin → internal Sendspin server → Sendspin player
@@ -620,15 +618,13 @@ and expiry. Sendspin services are output targets.
 - [x] Use per-target timeouts so cloud latency never delays the local PA
 - [x] Log target-specific failures without disabling healthy targets
 - [x] Stop button fans out to every enabled target
-- [ ] Replace internal/external local output abstraction with service-only local HTTP output
+- [x] Replace internal/external local output abstraction with service-only local HTTP output
 - [x] Track detailed package work in `Sendspin Service Package PVA.md`
 
 #### Sendspin server API
-Current migration state: `sendspin_service/` has its own `audio_queue.py`,
-`sendspin.py`, and `server.py` so the service can evolve independently while
-the plugin still keeps the internal Sendspin path as a fallback. This temporary
-duplication is intentional until the service package and HTTP output path are
-tested end to end. The first service API smoke test has passed for `/health`,
+Current migration state: `sendspin_service/` owns its own `audio_queue.py`,
+`sendspin.py`, and `server.py`. The plugin no longer keeps an internal Sendspin
+server fallback. The first service API smoke test has passed for `/health`,
 `/v1/play`, and `/v1/stop`.
 
 - [x] Create Sendspin server entrypoint under root-level `sendspin_service/`, separate from RotorHazard plugin initialization
@@ -641,13 +637,15 @@ tested end to end. The first service API smoke test has passed for `/health`,
 
 #### Local Sendspin service on Raspberry Pi
 - [x] Provide `sendspin.service` systemd unit file with the repo
-- [ ] Remove plugin setting: Sendspin local mode (Internal server / External server / Disabled)
-- [ ] Keep internal Sendspin as hidden/legacy fallback until service package release criteria are met
-- [ ] Plugin setting: Sendspin service URL (default: `http://127.0.0.1:8766`)
-- [ ] Plugin health check pings service status endpoint
-- [ ] Local service works as a self-contained `.deb` package
-- [ ] Local service does not depend on RotorHazard venv, `uv`, `pip`, or user-managed Python
-- [ ] Document service package install, upgrade, status, logs, remove, and purge
+- [x] Remove plugin setting: Sendspin local mode (Internal server / External server / Disabled)
+- [x] Remove internal Sendspin hidden/legacy fallback
+- [x] Plugin setting: Sendspin service URL (default: `http://127.0.0.1:8766`)
+- [ ] Optional plugin health/status display without adding a separate debug-style quick button
+- [ ] Add a service API compatibility field and plugin-side handling only when the service API gets a breaking change
+- [x] Local service works as a self-contained `.deb` package on amd64
+- [x] Play audio check works through the installed local service on amd64
+- [x] Local service does not depend on RotorHazard venv, `uv`, `pip`, or user-managed Python
+- [x] Document service package install, upgrade, status, logs, remove, and purge
 
 #### Cloud Sendspin target
 - [ ] Plugin setting: Cloud Sendspin server enabled/disabled

@@ -1,0 +1,18 @@
+---
+services:
+  sendspin-service:
+    image: ghcr.io/dutchdronesquad/sendspin-service:latest
+    init: true
+    restart: unless-stopped
+    environment:
+      SENDSPIN_INGEST_HOST: 0.0.0.0
+      SENDSPIN_INGEST_PORT: "8766"
+      SENDSPIN_HOST: 0.0.0.0
+      SENDSPIN_PORT: "8927"
+      SENDSPIN_ADVERTISE: "false"
+      SENDSPIN_MAX_BODY_MB: "50"
+      SENDSPIN_PLAYER_DIR: /opt/sendspin-service/player
+      SENDSPIN_API_TOKEN: "${SENDSPIN_API_TOKEN:-}"
+    ports:
+      - "8766:8766"
+      - "8927:8927"

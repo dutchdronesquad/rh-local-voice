@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build-player:
@@ -64,3 +65,51 @@ jobs:
           files: |
             dist/sendspin-service_*.deb
             dist/sendspin-service_*.deb.sha256
+
+  build-docker:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.2
+      - name: ⚙️ Configure Docker image
+        id: docker-config
+        shell: bash
+        run: |
+          image_owner="${GITHUB_REPOSITORY_OWNER,,}"
+          version="${GITHUB_REF_NAME#v}"
+
+          echo "image=ghcr.io/${image_owner}/sendspin-service" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: 🏗 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: 🏗 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: 🔐 Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 🧾 Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.docker-config.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.docker-config.outputs.version }}
+            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+            type=sha,prefix=sha-
+      - name: 🏗 Build and publish Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SERVICE_VERSION=${{ steps.docker-config.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

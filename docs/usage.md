@@ -46,6 +46,49 @@ SENDSPIN_MAX_BODY_MB=50
 
 The service API accepts inline WAV payloads via `wav_files`. It does not accept filesystem paths. This keeps the packaged service independent of RotorHazard/plugin directory permissions while running with `DynamicUser=yes`.
 
+## Docker Image
+
+The Docker image is the container/cloud deployment path for `sendspin-service`. For a normal Raspberry Pi timing-server install, use the `.deb` package instead.
+
+Basic local container run:
+
+```shell
+docker run --rm \
+  -p 8766:8766 \
+  -p 8927:8927 \
+  ghcr.io/dutchdronesquad/sendspin-service:latest
+```
+
+Docker Compose:
+
+```shell
+cp .env.example .env
+sed -i "s/change-this-token/$(openssl rand -hex 32)/" .env
+docker compose up -d
+```
+
+The included Compose file is production-oriented and pulls the published GHCR image. For local image development, build the image directly with `docker build -t sendspin-service:dev .`.
+
+The container serves the browser player at `http://<container-host>:8766/player`.
+
+With Nginx Proxy Manager, point a proxy host such as `voice.example.com` at the container host on port `8766` for the player and HTTP ingest API. The Sendspin WebSocket endpoint on port `8927` also needs to be reachable by browser clients, either through a second proxy/stream entry or by exposing the port directly on the trusted network.
+
+Container defaults:
+
+```shell
+SENDSPIN_INGEST_HOST=0.0.0.0
+SENDSPIN_INGEST_PORT=8766
+SENDSPIN_HOST=0.0.0.0
+SENDSPIN_PORT=8927
+SENDSPIN_ADVERTISE=false
+SENDSPIN_MAX_BODY_MB=50
+SENDSPIN_PLAYER_DIR=/opt/sendspin-service/player
+```
+
+For a public cloud/container deployment, set `SENDSPIN_API_TOKEN` before exposing port `8766`. Producers must send `Authorization: Bearer <token>` for `/v1/play` and `/v1/stop`. Keep it unset only for local-only testing on a trusted machine.
+
+The image does not include the RotorHazard plugin. The bundled player is for direct container/cloud use; the normal RotorHazard plugin ZIP still serves its own `/player` route.
+
 Manual playback test:
 
 ```shell

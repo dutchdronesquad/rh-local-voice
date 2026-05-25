@@ -6,15 +6,18 @@ import argparse
 import base64
 import binascii
 import contextlib
+import hmac
 import json
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
 
 from .audio_queue import DEFAULT_EXPIRY_SEC, AudioQueue, Priority, WavItem
+from .player import add_player_routes
 from .sendspin import SendSpinServer
 
 if TYPE_CHECKING:
@@ -42,6 +45,8 @@ class ServiceConfig:
     sendspin_port: int = DEFAULT_SENDSPIN_PORT
     advertise: bool = True
     max_body_bytes: int = DEFAULT_MAX_BODY_MB * BYTES_PER_MIB
+    player_dir: Path | None = None
+    api_token: str = ""
 
 
 class SendspinService:
@@ -75,12 +80,23 @@ class SendspinService:
             "connected_clients": connected_clients,
             "connected_players": connected_clients,
             "max_body_bytes": self._config.max_body_bytes,
+            "api_auth_required": bool(self._config.api_token),
         }
 
     @property
     def max_body_bytes(self) -> int:
         """Return the configured maximum HTTP request body size."""
         return self._config.max_body_bytes
+
+    @property
+    def player_dir(self) -> Path | None:
+        """Return the optional browser player build directory."""
+        return self._config.player_dir
+
+    @property
+    def api_token(self) -> str:
+        """Return the optional API bearer token."""
+        return self._config.api_token
 
     def play(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Queue a playback request from a JSON payload."""
@@ -116,11 +132,15 @@ class SendspinService:
 
 def _create_app(service: SendspinService) -> web.Application:
     """Create the HTTP ingest application."""
-    app = web.Application(client_max_size=service.max_body_bytes)
+    app = web.Application(
+        client_max_size=service.max_body_bytes,
+        middlewares=[_api_token_middleware],
+    )
     app["service"] = service
     app.router.add_get("/health", _health)
     app.router.add_post("/v1/play", _play)
     app.router.add_post("/v1/stop", _stop)
+    add_player_routes(app, service.player_dir)
     return app
 
 
@@ -152,12 +172,37 @@ async def _stop(request: web.Request) -> web.Response:
         return web.json_response({"error": "internal server error"}, status=500)
 
 
+@web.middleware
+async def _api_token_middleware(
+    request: web.Request,
+    handler: web.RequestHandler,
+) -> web.StreamResponse:
+    if request.path in {"/v1/play", "/v1/stop"}:
+        _require_api_token(request)
+    return await handler(request)
+
+
+def _require_api_token(request: web.Request) -> None:
+    token = _service(request).api_token
+    if not token:
+        return
+    expected = f"Bearer {token}"
+    actual = request.headers.get("Authorization", "")
+    if hmac.compare_digest(actual, expected):
+        return
+    raise web.HTTPUnauthorized(
+        text=json.dumps({"error": "missing or invalid API token"}),
+        content_type="application/json",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 async def _read_json(request: web.Request) -> dict[str, Any]:
     content_length = request.content_length
     if content_length == 0:
         return {}
     if content_length is not None and content_length > _service(request).max_body_bytes:
-        raise ValueError("request body too large")
+        raise web.HTTPRequestEntityTooLarge
     try:
         payload = await request.json(loads=json.loads)
     except json.JSONDecodeError as exc:
@@ -253,6 +298,13 @@ def _env_bool(name: str, *, default: bool) -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return None
+    return Path(value.strip()).expanduser()
+
+
 def _body_limit_mb(value: int) -> int:
     if value < 1:
         logger.warning("Clamping SENDSPIN_MAX_BODY_MB to 1 MiB")
@@ -300,6 +352,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> ServiceConfig:
         type=int,
         help="Maximum JSON request body size in MiB",
     )
+    parser.add_argument(
+        "--player-dir",
+        default=_env_path("SENDSPIN_PLAYER_DIR"),
+        type=Path,
+        help="Optional browser player build directory",
+    )
+    parser.add_argument(
+        "--api-token",
+        default=_env_str("SENDSPIN_API_TOKEN", ""),
+        help="Optional bearer token required for /v1/play and /v1/stop",
+    )
     args = parser.parse_args(argv)
     max_body_mb = _body_limit_mb(args.max_body_mb)
     return ServiceConfig(
@@ -309,6 +372,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> ServiceConfig:
         sendspin_port=args.sendspin_port,
         advertise=args.advertise,
         max_body_bytes=max_body_mb * BYTES_PER_MIB,
+        player_dir=args.player_dir,
+        api_token=args.api_token.strip(),
     )
 
 

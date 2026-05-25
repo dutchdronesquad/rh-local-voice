@@ -1,0 +1,26 @@
+---
+name: Build
+on:
+  pull_request:
+    paths:
+      - .github/actions/build-sendspin-deb/**
+      - .github/workflows/build.yaml
+      - sendspin_service/**
+      - tools/build_sendspin_service_deb.py
+      - packaging/**
+      - pyproject.toml
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    name: Sendspin service (amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.2
+      - name: 🏗 Build .deb
+        uses: ./.github/actions/build-sendspin-deb
+        with:
+          arch: amd64

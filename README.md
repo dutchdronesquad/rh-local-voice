@@ -67,7 +67,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 1. Download the plugin ZIP from the latest GitHub release.
 2. In RotorHazard, open the plugin manager and upload the ZIP file.
 3. Restart RotorHazard if requested.
-4. Install and start `sendspin-service`.
+4. Download the matching `sendspin-service_*.deb` from the same GitHub release and install it on the RotorHazard host.
 5. Open the RotorHazard settings page and enable **Local Voice**.
 6. Confirm **Sendspin service URL** points to the service, normally `http://127.0.0.1:8766`.
 7. Open `/player` from the RotorHazard host on the playback device.

@@ -226,6 +226,7 @@ class SendSpinServer:
     def _run_loop(self) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        loop.set_exception_handler(_handle_loop_exception)
         self._loop = loop
         try:
             try:
@@ -536,6 +537,19 @@ class SendSpinServer:
                     client.client_id,
                 )
         return sum(1 for client in group.clients if client.is_connected)
+
+
+def _handle_loop_exception(
+    loop: asyncio.AbstractEventLoop, context: dict[str, object]
+) -> None:
+    """Ignore expected connection errors and delegate other loop exceptions."""
+    exception = context.get("exception")
+    if isinstance(exception, ConnectionError):
+        logger.debug(
+            "Sendspin service: suppressed loop connection error", exc_info=exception
+        )
+        return
+    loop.default_exception_handler(context)
 
 
 def _scheduled_play_start_us(play_at: float, now_us: int) -> int:

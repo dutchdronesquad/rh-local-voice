@@ -7,8 +7,14 @@ Package metadata and file mapping live in `packaging/nfpm.yaml`. The build scrip
 Build:
 
 ```shell
-uv run python -m tools.build_sendspin_service_deb
+python -m tools.build_sendspin_service_deb
 ```
+
+CI/release builds:
+
+- `.github/actions/build-sendspin-deb/action.yaml` installs `uv`/`nfpm`, stages the bundle, and packages the `.deb`.
+- `.github/workflows/build.yaml` builds the `amd64` package on pull requests that touch service/package inputs.
+- `.github/workflows/release.yaml` builds `amd64` and `arm64` packages on published GitHub Releases and uploads them as release assets.
 
 Target install layout:
 

@@ -151,6 +151,7 @@ def _add_prepare_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _build_app(runtime_python: Path) -> None:
+    shutil.rmtree(APP_BUILD_ROOT, ignore_errors=True)
     APP_BUILD_ROOT.mkdir(parents=True, exist_ok=True)
     _run(
         [

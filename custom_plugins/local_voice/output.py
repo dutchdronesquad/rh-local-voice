@@ -88,7 +88,8 @@ class SendspinServiceClient:
         return wav_files
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> None:
-        url = f"{self._base_url()}{path}"
+        base_url = self._base_url()
+        url = f"{base_url}{path}"
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         request = urllib.request.Request(  # noqa: S310
             url,
@@ -118,7 +119,7 @@ class SendspinServiceClient:
         except urllib.error.URLError as exc:
             logger.exception(
                 "Local Voice: Sendspin service is not reachable at %s: %s",
-                self._base_url(),
+                base_url,
                 exc.reason,
             )
         except TimeoutError:
@@ -134,5 +135,11 @@ class SendspinServiceClient:
         if parsed.scheme not in {"http", "https"}:
             scheme = parsed.scheme or "<empty>"
             message = f"invalid Sendspin service URL scheme: {scheme}"
+            raise ValueError(message)
+        if not parsed.netloc:
+            message = "invalid Sendspin service URL: missing host"
+            raise ValueError(message)
+        if parsed.path or parsed.params or parsed.query or parsed.fragment:
+            message = "invalid Sendspin service URL: use http(s)://host[:port]"
             raise ValueError(message)
         return url

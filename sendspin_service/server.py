@@ -195,7 +195,7 @@ class _ServiceHTTPServer(ThreadingHTTPServer):
 
 
 def _wav_items(payload: dict[str, Any]) -> list[WavItem]:
-    if payload.get("wav_paths"):
+    if "wav_paths" in payload:
         raise ValueError("wav_paths are not supported; use wav_files")
     return _inline_wav_items(payload.get("wav_files"))
 

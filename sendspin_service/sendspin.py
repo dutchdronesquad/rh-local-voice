@@ -12,6 +12,7 @@ import wave
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+import numpy as np
 from aiosendspin.server import AudioFormat
 from aiosendspin.server import SendspinServer as AioSendspinServer
 from aiosendspin.server.push_stream import MAIN_CHANNEL, StreamStoppedError
@@ -606,36 +607,52 @@ def _scale_pcm(pcm_data: bytes, sample_width: int, volume: float) -> bytes:
     if volume <= 0.0:
         return bytes(len(pcm_data))
     if sample_width == 2:
-        return _scale_pcm_int(pcm_data, sample_width, -0x8000, 0x7FFF, volume)
+        return _scale_pcm_int(pcm_data, "<i2", "<f4", volume)
     if sample_width == 3:
-        return _scale_pcm_int(pcm_data, sample_width, -0x800000, 0x7FFFFF, volume)
+        return _scale_pcm_int24(pcm_data, volume)
     if sample_width == 4:
-        return _scale_pcm_int(pcm_data, sample_width, -0x80000000, 0x7FFFFFFF, volume)
+        return _scale_pcm_int(pcm_data, "<i4", "<f8", volume)
     logger.warning("Sendspin service: cannot apply volume to %s-byte PCM", sample_width)
     return pcm_data
 
 
 def _scale_pcm_int(
     pcm_data: bytes,
-    sample_width: int,
-    min_value: int,
-    max_value: int,
+    sample_dtype_name: str,
+    calc_dtype_name: str,
     volume: float,
 ) -> bytes:
-    scaled = bytearray(len(pcm_data))
-    for offset in range(0, len(pcm_data), sample_width):
-        sample = int.from_bytes(
-            pcm_data[offset : offset + sample_width],
-            byteorder="little",
-            signed=True,
-        )
-        value = max(min(int(sample * volume), max_value), min_value)
-        scaled[offset : offset + sample_width] = value.to_bytes(
-            sample_width,
-            byteorder="little",
-            signed=True,
-        )
-    return bytes(scaled)
+    sample_dtype = np.dtype(sample_dtype_name)
+    calc_dtype = np.dtype(calc_dtype_name)
+    sample_range = np.iinfo(sample_dtype)
+    samples = np.frombuffer(pcm_data, dtype=sample_dtype)
+    scaled = np.clip(
+        samples.astype(calc_dtype) * volume,
+        sample_range.min,
+        sample_range.max,
+    ).astype(sample_dtype)
+    return scaled.tobytes()
+
+
+def _scale_pcm_int24(pcm_data: bytes, volume: float) -> bytes:
+    raw = np.frombuffer(pcm_data, dtype=np.uint8).reshape(-1, 3)
+    samples = (
+        raw[:, 0].astype(np.int32)
+        | (raw[:, 1].astype(np.int32) << 8)
+        | (raw[:, 2].astype(np.int32) << 16)
+    )
+    samples = np.where(samples & 0x800000, samples - 0x1000000, samples)
+    scaled = np.clip(
+        (samples.astype(np.float32) * volume).astype(np.int32),
+        -0x800000,
+        0x7FFFFF,
+    )
+    packed = np.where(scaled < 0, scaled + 0x1000000, scaled).astype(np.uint32)
+    output = np.empty((len(packed), 3), dtype=np.uint8)
+    output[:, 0] = packed & 0xFF
+    output[:, 1] = (packed >> 8) & 0xFF
+    output[:, 2] = (packed >> 16) & 0xFF
+    return output.tobytes()
 
 
 def _read_wav_clips(wav_items: list[WavItem]) -> list[_WavClip]:

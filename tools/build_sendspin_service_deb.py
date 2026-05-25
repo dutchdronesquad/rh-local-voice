@@ -176,7 +176,15 @@ def _build_app(runtime_python: Path) -> None:
 def _uv_python(python_version: str) -> Path:
     _run([UV, "python", "install", python_version])
     result = subprocess.run(  # noqa: S603
-        [UV, "python", "find", python_version],
+        [
+            UV,
+            "python",
+            "find",
+            "--no-project",
+            "--python-preference",
+            "only-managed",
+            python_version,
+        ],
         check=True,
         capture_output=True,
         text=True,

@@ -7,7 +7,7 @@ Package metadata and file mapping live in `packaging/nfpm.yaml`. The build scrip
 Build:
 
 ```shell
-uv run python -m tools.build_sendspin_service_deb
+python -m tools.build_sendspin_service_deb
 ```
 
 CI/release builds:

@@ -220,9 +220,9 @@ The Sendspin player can run on any device with an audio output: Intel NUC, lapto
 
 ### Browser player: current implementation
 
-The plugin-served browser player is now a Vite / Preact / TypeScript app in the root-level `player/` directory. It uses the official `@sendspin/sendspin-js` SDK for playback instead of maintaining custom WebAudio timing, buffering, correction, and reconnect logic in a hand-written HTML file.
+The browser player is a Vite / Preact / TypeScript app in the root-level `player/` directory. It uses the official `@sendspin/sendspin-js` SDK for playback instead of maintaining custom WebAudio timing, buffering, correction, and reconnect logic in a hand-written HTML file.
 
-The production build is written to `custom_plugins/local_voice/player/`, and the RotorHazard plugin serves that directory at `/player`. Operator-facing URLs therefore stay stable while the browser player is maintained as a normal frontend app.
+The frontend build writes the production assets into `custom_plugins/local_voice/player/`, so the RotorHazard plugin can serve `/player` from the same plugin ZIP. The local `.deb` service stays headless; a future Docker/cloud service can bundle its own player frontend when that deployment path needs QR/session flows.
 
 #### Source and build output
 
@@ -238,8 +238,8 @@ rh-local-voice/
       index.tsx
       style.css
   custom_plugins/local_voice/player/
-    index.html                    # generated build output, served by plugin
-    assets/...                    # generated build output
+    index.html                    # generated during plugin release build
+    assets/...                    # generated during plugin release build
 ```
 
 #### Current design
@@ -302,7 +302,7 @@ new SendspinPlayer({
 
 The browser player should continue to avoid local audio scheduling code. Timing, correction, reconnects, and decoding belong in the Sendspin SDK.
 
-Long-term ownership note: once `sendspin-service` is the required local playback component, the browser player should move from the RotorHazard plugin route to the service. The plugin can keep `/player` temporarily as a redirect or compatibility route, but the service is the cleaner owner because it exposes the Sendspin endpoint and can later provide the same player/QR flow for cloud deployments.
+Ownership note: the RotorHazard plugin owns the local browser player because it is part of the race-control UI and sharing it is an operator decision. Docker/cloud Sendspin deployments can still bundle a service-owned player later for QR/session flows.
 
 #### Build / dev scripts
 
@@ -318,13 +318,13 @@ Long-term ownership note: once `sendspin-service` is the required local playback
 }
 ```
 
-`vite.config.ts` uses a small `fromConfig()` helper and writes production output to `../custom_plugins/local_voice/player`.
+`vite.config.ts` uses a small `fromConfig()` helper and writes production output to `custom_plugins/local_voice/player`.
 
 #### Validation checklist
 
 - [x] `npm run check` passes in `player/`.
 - [x] `npm run build` emits `custom_plugins/local_voice/player/index.html` and assets.
-- [x] RotorHazard `/player` route is implemented for the built app and static assets.
+- [x] RotorHazard plugin serves `/player` and static player assets.
 - [x] Hard refresh / clean localStorage computes a usable default URL from the current host.
 - [x] Browser player connects to `aiosendspin` on `8927`.
 - [x] Test phrase plays in sync with a native Sendspin player.
@@ -571,10 +571,10 @@ Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyo
 - [x] Browser player served at `/player`
 - [x] Root-level `player/` Vite/Preact app scaffolded
 - [x] Add `@sendspin/sendspin-js` to the root-level player app
-- [x] Configure Vite build output to `custom_plugins/local_voice/player/`
+- [x] Configure Vite build output to `custom_plugins/local_voice/player` for plugin release packaging
 - [x] Replace template UI with `SendspinPlayer`-based app
 - [x] Add compact diagnostics for sync drift, correction mode, reconnects, and player state
-- [x] Plugin panel links to `/player`; live connection state is owned by the browser player UI, not the RotorHazard settings panel
+- [x] Browser player is served by the RotorHazard plugin; live connection state is owned by the browser player UI, not the RotorHazard settings panel
 
 **Success criteria:**
 - [x] "Test phrase" plays audibly through the browser player on a remote device

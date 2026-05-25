@@ -1,6 +1,8 @@
 # Usage Guide
 
-Local Voice generates RotorHazard callout WAV files on the timing server and sends them to `sendspin-service` over local HTTP. The service owns the Sendspin player endpoint on port `8927`; the plugin does not start its own Sendspin server.
+Local Voice generates RotorHazard callout WAV files on the timing server and sends them to `sendspin-service` over local HTTP. The plugin serves the browser player at `/player`; the service owns the Sendspin player endpoint on port `8927`.
+
+The plugin ZIP and service `.deb` are separate release assets. Install both for a normal RotorHazard setup: the plugin provides RotorHazard integration and the `/player` page, while `sendspin-service` provides playback transport.
 
 ## Setup
 
@@ -9,7 +11,7 @@ Local Voice generates RotorHazard callout WAV files on the timing server and sen
 3. Enable **Plugin audio**.
 4. Confirm **Sendspin service URL** is `http://127.0.0.1:8766`.
 5. Choose a voice model and speech settings.
-6. Open `/player` from the RotorHazard host on the playback device, for example `http://rotorhazard.local:5000/player`.
+6. Open the browser player from the RotorHazard UI on the playback device, for example `<RotorHazard UI base URL>/player`.
 7. Set normal RotorHazard browser Voice Volume to `0` on clients that should not play duplicate built-in callouts.
 8. Use **Generate test phrase** or **Play audio check**.
 
@@ -88,14 +90,15 @@ python -m tools.build_sendspin_service_deb --architecture arm64
 For local install testing, copy the `.deb` to `/tmp` first so `apt` can read it through its `_apt` sandbox user:
 
 ```shell
-cp dist/sendspin-service_0.1.0_amd64.deb /tmp/
-sudo apt install /tmp/sendspin-service_0.1.0_amd64.deb
+rm -f /tmp/sendspin-service_*.deb
+cp dist/sendspin-service_*_amd64.deb /tmp/
+sudo apt install /tmp/sendspin-service_*_amd64.deb
 ```
 
 Reinstall the same local version:
 
 ```shell
-sudo apt install --reinstall /tmp/sendspin-service_0.1.0_amd64.deb
+sudo apt install --reinstall /tmp/sendspin-service_*_amd64.deb
 ```
 
 Package CI:
@@ -107,7 +110,7 @@ Package CI:
 ## Settings
 
 - **Enable plugin audio**: Turns Local Voice callout generation on or off.
-- **Sendspin service URL**: Local HTTP endpoint for `sendspin-service`. Default: `http://127.0.0.1:8766`.
+- **Sendspin service URL**: Local HTTP endpoint for `sendspin-service`. Default: `http://127.0.0.1:8766` when the plugin and service run on the same host.
 - **Sendspin service timeout**: HTTP timeout for queue/stop requests to `sendspin-service`.
 - **Voice model**: Piper voice model. Models are downloaded once and reused.
 - **Speech speed**: Speaking rate. `1.0` is Piper default.
@@ -134,6 +137,7 @@ Use **Rebuild pre-cache** after startup or voice setting changes to prepare curr
 
 - **No audio in `/player`**: confirm `sendspin-service` is running, port `8927` is reachable from the playback device, and the player is connected.
 - **Service unreachable**: confirm `curl http://127.0.0.1:8766/health` works from the RotorHazard host.
+- **Player page unreachable**: confirm `<RotorHazard UI base URL>/player` works from the playback device.
 - **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in regular RotorHazard browser clients.
 - **First phrase is slow**: the selected Piper model may still be downloading or loading.
 - **Browser playback stutters**: test Safari or Chrome incognito with extensions disabled, then validate on the race network.

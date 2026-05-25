@@ -13,7 +13,7 @@ RotorHazard event/filter
   -> Sendspin browser/player clients
 ```
 
-The RotorHazard plugin owns event handling, TTS generation, caching, and enqueueing. It does not own the Sendspin server process. `sendspin-service` owns `aiosendspin`, player connections, stream state, and the Sendspin player endpoint on port `8927`.
+The RotorHazard plugin owns event handling, TTS generation, caching, enqueueing, and the browser player route at `/player`. `sendspin-service` owns `aiosendspin`, player connections, stream state, and the Sendspin player endpoint on port `8927`.
 
 ## Plugin Package
 
@@ -29,7 +29,7 @@ The plugin sends `/v1/play` requests with inline `wav_files` payloads. The servi
 
 ## Service Package
 
-- `sendspin_service/server.py`: HTTP ingest API, config/env parsing, health, play, and stop endpoints.
+- `sendspin_service/server.py`: `aiohttp.web` service for the HTTP ingest API, health endpoint, config/env parsing, play, and stop endpoints.
 - `sendspin_service/audio_queue.py`: service-side priority queue.
 - `sendspin_service/sendspin.py`: synchronous adapter around `aiosendspin`.
 

@@ -60,6 +60,8 @@ If the service is stopped or missing, the plugin should log a direct message tha
 - The service package dependency set is separate from the plugin dependency set.
 - `av`, `numpy`, and `pillow` are currently required by the `aiosendspin` runtime path.
 - The old plugin-side `custom_plugins/local_voice/sendspin.py` has been removed.
+- The local browser player remains part of the RotorHazard plugin and is served at `/player`.
+- The local `.deb` package is intentionally headless: it exposes the HTTP ingest API and Sendspin WebSocket endpoint, but does not serve a player UI.
 
 ## Runtime Strategy
 
@@ -111,6 +113,8 @@ Install layout:
 /lib/systemd/system/sendspin-service.service
 ```
 
+The package does not install RotorHazard plugin files or player frontend assets. The plugin release ZIP remains responsible for the RotorHazard UI integration and `/player` route.
+
 Default service config:
 
 ```text
@@ -158,6 +162,8 @@ Build command:
 ```shell
 python -m tools.build_sendspin_service_deb
 ```
+
+Local build requirements: `uv`, `nfpm`, and Python 3.11+ for the build script.
 
 Build inputs:
 
@@ -219,7 +225,7 @@ Important measurement history:
 ## Still To Do
 
 - [ ] Decide whether Docker/cloud release automation belongs in this repo before the first public package release.
-- [ ] Move the browser player into `sendspin-service` so the service owns both the Sendspin endpoint and the player UI.
+- [x] Keep the local browser player in the RotorHazard plugin; defer service-owned player UI to Docker/cloud packaging.
 
 ## Local Testing On Ubuntu VM
 
@@ -227,8 +233,9 @@ The Ubuntu VM is the primary `amd64` package lifecycle test environment.
 
 ```shell
 python -m tools.build_sendspin_service_deb
-cp dist/sendspin-service_0.1.0_amd64.deb /tmp/
-sudo apt install /tmp/sendspin-service_0.1.0_amd64.deb
+rm -f /tmp/sendspin-service_*.deb
+cp dist/sendspin-service_*_amd64.deb /tmp/
+sudo apt install /tmp/sendspin-service_*_amd64.deb
 systemctl status sendspin-service
 curl http://127.0.0.1:8766/health
 ```
@@ -236,8 +243,8 @@ curl http://127.0.0.1:8766/health
 Upgrade/reinstall tests:
 
 ```shell
-sudo apt install --reinstall /tmp/sendspin-service_0.1.0_amd64.deb
-sudo apt install /tmp/sendspin-service_0.1.1_amd64.deb
+sudo apt install --reinstall /tmp/sendspin-service_*_amd64.deb
+sudo apt install /tmp/sendspin-service_<new-version>_amd64.deb
 ```
 
 Removal tests:
@@ -303,8 +310,15 @@ Actual workflows:
 ```text
 .github/workflows/release.yaml       — builds amd64 + arm64 .deb on release, uploads to GitHub Release
 .github/workflows/build.yaml         — builds amd64 .deb on PR when service files change
+.github/workflows/linting.yaml       — ruff, formatting, pre-commit style checks, and player build
+.github/workflows/release-version.yaml — validates plugin manifest version on release branches
 .github/actions/build-sendspin-deb/  — composite action shared by both workflows
 ```
+
+Release output is split by responsibility:
+
+- `local_voice.zip`: RotorHazard plugin package, including the `/player` browser frontend.
+- `sendspin-service_<version>_<arch>.deb`: local headless Sendspin service package.
 
 Still needed:
 
@@ -312,11 +326,9 @@ Still needed:
 .github/workflows/sendspin-docker.yml  — Docker image builds for cloud target
 ```
 
-Test workflow (not yet created):
+Still missing from automated checks:
 
-- lint service code
-- compile/import checks
-- API unit tests
+
 - package metadata checks
 
 Docker workflow:
@@ -337,6 +349,8 @@ ghcr.io/<owner>/sendspin-service:0.1.0
 ## Docker / Cloud Path
 
 Docker is the primary deployment format for cloud Sendspin targets. The local Pi path stays `.deb` + systemd.
+
+Unlike the local `.deb`, the future Docker/cloud service may include a service-owned player frontend. That player should be designed for remote/QR use and should not force the local RotorHazard plugin to give up its operator-facing `/player` route.
 
 Example target shape:
 
@@ -361,6 +375,8 @@ Keep the local and cloud API shared where practical:
 - `GET /health`
 - `POST /v1/play`
 - `POST /v1/stop`
+
+For the local package, the HTTP ingest API remains localhost-only. Cloud deployments need their own auth model instead of relying on loopback checks.
 
 But keep deployment concerns separate:
 
@@ -395,6 +411,7 @@ Docker checklist:
 
 - [ ] Build `linux/amd64` image.
 - [ ] Build `linux/arm64` image.
+- [ ] Decide where the Docker/cloud player frontend lives and how it is built.
 - [ ] Push to GHCR.
 - [ ] Document cloud deployment example.
 
@@ -430,7 +447,6 @@ Before public release packages are attached to GitHub Releases:
 ## Later
 
 - Cloud Sendspin target for QR/phone listeners.
-- Browser player served by `sendspin-service` instead of the RotorHazard plugin.
 - Optional service auth if the ingest API is bound beyond localhost.
 - Possible upstream work with `aiosendspin` to avoid importing heavy optional roles/dependencies for PCM-only playback.
 

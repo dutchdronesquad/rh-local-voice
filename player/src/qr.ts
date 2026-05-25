@@ -18,7 +18,9 @@ export function qrMatrix(text: string): boolean[][] {
   const reserved: boolean[][] = Array.from({ length: SIZE }, () => Array<boolean>(SIZE).fill(false));
 
   drawFunctionPatterns(modules, reserved);
-  drawCodewords(modules, reserved, [...encodeData(data), ...reedSolomonRemainder(encodeData(data), ECC_CODEWORDS)]);
+  const dataCodewords = encodeData(data);
+  const eccCodewords = reedSolomonRemainder(dataCodewords, ECC_CODEWORDS);
+  drawCodewords(modules, reserved, [...dataCodewords, ...eccCodewords]);
   drawFormatBits(modules, reserved);
 
   return modules.map((row) => row.map(Boolean));

@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build-deb:
-    name: Sendspin service deb (amd64)
+    name: Sendspin service .deb
     runs-on: ubuntu-latest
     steps:
       - name: ⤵️ Check out code from GitHub
@@ -30,7 +30,7 @@ jobs:
           arch: amd64
 
   build-docker:
-    name: Sendspin service Docker (amd64)
+    name: Sendspin service Docker
     runs-on: ubuntu-latest
     steps:
       - name: ⤵️ Check out code from GitHub

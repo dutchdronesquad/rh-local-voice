@@ -186,9 +186,10 @@ def _require_api_token(request: web.Request) -> None:
     token = _service(request).api_token
     if not token:
         return
-    expected = f"Bearer {token}"
-    actual = request.headers.get("Authorization", "")
-    if hmac.compare_digest(actual, expected):
+    scheme, _, actual_token = (
+        request.headers.get("Authorization", "").strip().partition(" ")
+    )
+    if scheme.lower() == "bearer" and hmac.compare_digest(actual_token.strip(), token):
         return
     raise web.HTTPUnauthorized(
         text=json.dumps({"error": "missing or invalid API token"}),
@@ -202,7 +203,10 @@ async def _read_json(request: web.Request) -> dict[str, Any]:
     if content_length == 0:
         return {}
     if content_length is not None and content_length > _service(request).max_body_bytes:
-        raise web.HTTPRequestEntityTooLarge
+        raise web.HTTPRequestEntityTooLarge(
+            max_size=_service(request).max_body_bytes,
+            actual_size=content_length,
+        )
     try:
         payload = await request.json(loads=json.loads)
     except json.JSONDecodeError as exc:

@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 RELEASE_BRANCH_RE = re.compile(r"^release/v(?P<version>\d+\.\d+\.\d+)$")
+RELEASE_BRANCH_PREFIX = "release/"
 
 
 def main() -> None:
@@ -21,6 +22,13 @@ def main() -> None:
 
     branch_version = _release_branch_version(args.branch)
     if branch_version is None:
+        if args.branch.startswith(RELEASE_BRANCH_PREFIX):
+            message = (
+                "Invalid release branch name:\n"
+                f"branch:   {args.branch}\n"
+                "expected: release/v<major>.<minor>.<patch>"
+            )
+            raise SystemExit(message)
         return
 
     manifest_version = _manifest_version(args.manifest)

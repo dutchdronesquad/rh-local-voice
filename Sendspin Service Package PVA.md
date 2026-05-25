@@ -219,6 +219,7 @@ Important measurement history:
 ## Still To Do
 
 - [ ] Decide whether Docker/cloud release automation belongs in this repo before the first public package release.
+- [ ] Move the browser player into `sendspin-service` so the service owns both the Sendspin endpoint and the player UI.
 
 ## Local Testing On Ubuntu VM
 
@@ -429,6 +430,7 @@ Before public release packages are attached to GitHub Releases:
 ## Later
 
 - Cloud Sendspin target for QR/phone listeners.
+- Browser player served by `sendspin-service` instead of the RotorHazard plugin.
 - Optional service auth if the ingest API is bound beyond localhost.
 - Possible upstream work with `aiosendspin` to avoid importing heavy optional roles/dependencies for PCM-only playback.
 

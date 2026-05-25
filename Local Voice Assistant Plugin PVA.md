@@ -302,6 +302,8 @@ new SendspinPlayer({
 
 The browser player should continue to avoid local audio scheduling code. Timing, correction, reconnects, and decoding belong in the Sendspin SDK.
 
+Long-term ownership note: once `sendspin-service` is the required local playback component, the browser player should move from the RotorHazard plugin route to the service. The plugin can keep `/player` temporarily as a redirect or compatibility route, but the service is the cleaner owner because it exposes the Sendspin endpoint and can later provide the same player/QR flow for cloud deployments.
+
 #### Build / dev scripts
 
 ```json

@@ -59,8 +59,7 @@ If the service is stopped or missing, the plugin should log a direct message tha
 - Service packaging uses a uv-built bundled CPython runtime and `nfpm`.
 - The service package dependency set is separate from the plugin dependency set.
 - `av`, `numpy`, and `pillow` are currently required by the `aiosendspin` runtime path.
-
-The old plugin-side `custom_plugins/local_voice/sendspin.py` may remain temporarily while active branches are cleaned up, but it is no longer the normal runtime path.
+- The old plugin-side `custom_plugins/local_voice/sendspin.py` has been removed.
 
 ## Runtime Strategy
 
@@ -172,7 +171,7 @@ Build inputs:
 
 ## Current Measurements
 
-Latest observed package/runtime characteristics on `amd64` after restoring required `av` runtime dependency:
+Latest confirmed package/runtime characteristics on `amd64` after restoring required `av` runtime dependency:
 
 ```text
 .deb size: ~66.5 MiB
@@ -202,19 +201,25 @@ Important measurement history:
 - [x] Split plugin dependencies from service dependencies.
 - [x] Build `.deb` with bundled runtime and `nfpm`.
 - [x] Validate install/remove/purge basics on Ubuntu VM.
+- [x] Verify plugin playback through installed `sendspin-service` on the Ubuntu VM after the HTTP-output switch.
+- [x] Rebuild `.deb` after the final dependency set and record updated size.
+- [x] Verify `/opt/sendspin-service/bin/sendspin-service --help` from the installed package.
+- [x] Verify config survives upgrade install.
 - [x] Confirm `wav_paths` is not part of the supported service API.
 - [x] Add GitHub Actions workflow for service package builds.
 - [x] Publish both `amd64` and `arm64` package artifacts on release.
+- [x] Remove old plugin-side `custom_plugins/local_voice/sendspin.py`.
+- [x] Keep `/health` available for service/package diagnostics.
+- [ ] Decide whether the plugin should surface service health as status text instead of a separate quick button.
+- [x] Add release checksums for service package assets.
+- [x] Add separate Version checks workflow that validates `manifest.json` on `release/vX.Y.Z` branches.
+- [x] Inject packaged service runtime version through the package launcher from the GitHub release tag during release builds.
+- [x] Use `0.0.0+dev` for local service package builds without release context.
 
 ## Still To Do
 
-- [ ] Verify plugin playback through installed `sendspin-service` on the Ubuntu VM after the HTTP-output switch.
-- [ ] Rebuild `.deb` after the final dependency set and record updated size.
-- [ ] Verify `/opt/sendspin-service/bin/sendspin-service --help` from the installed package.
-- [ ] Verify config survives upgrade install.
-- [ ] Build and test `arm64` package on Raspberry Pi OS.
-- [ ] Confirm Raspberry Pi memory/startup behavior is acceptable.
-- [ ] Remove old plugin-side `custom_plugins/local_voice/sendspin.py` once active branches no longer need it.
+- [ ] Decide whether Docker/cloud release automation belongs in this repo before the first public package release.
+- [ ] Move the browser player into `sendspin-service` so the service owns both the Sendspin endpoint and the player UI.
 
 ## Local Testing On Ubuntu VM
 
@@ -253,9 +258,9 @@ Acceptance:
 - purge removes config/state
 - port conflicts on `8766` and `8927` produce clear logs
 
-## Raspberry Pi `arm64` Package
+## Parked Until Release Candidate: Raspberry Pi `arm64` Package
 
-Goal: produce and validate the package on 64-bit Raspberry Pi OS.
+Goal: produce and validate the package on 64-bit Raspberry Pi OS once a release candidate exists and the `.deb` can be downloaded directly from GitHub Releases.
 
 Build checklist:
 
@@ -404,7 +409,7 @@ Acceptance:
 Before making the service-only path the release default:
 
 - Ubuntu VM package install/upgrade/remove/purge passes.
-- Raspberry Pi `arm64` package install and playback test passes.
+- Raspberry Pi `arm64` package install and playback test passes once release-candidate packages are available.
 - `Play audio check` works through the installed service.
 - Service logs clear errors for port conflicts and unreachable clients.
 - Documentation covers install, upgrade, logs, remove, and purge.
@@ -413,17 +418,19 @@ Before making the service-only path the release default:
 
 Before public release packages are attached to GitHub Releases:
 
-- [ ] One source of truth for service version.
-- [ ] Version included in package name, `/health`, Docker tags, and release notes.
+- [x] Release branches use `release/vX.Y.Z` and the separate Version checks workflow checks that `manifest.json` matches.
+- [x] Release tag version is included in package name and `/health`.
+- [ ] Add service API compatibility metadata and plugin-side handling only when the service API gets a breaking change.
 - [x] Tagged release builds `amd64` and `arm64` `.deb` packages.
 - [ ] Tagged release builds `linux/amd64` and `linux/arm64` Docker images.
 - [x] Release artifacts are named consistently.
-- [ ] Checksums are published.
+- [x] Checksums are published.
 - [ ] User update instructions are documented.
 
 ## Later
 
 - Cloud Sendspin target for QR/phone listeners.
+- Browser player served by `sendspin-service` instead of the RotorHazard plugin.
 - Optional service auth if the ingest API is bound beyond localhost.
 - Possible upstream work with `aiosendspin` to avoid importing heavy optional roles/dependencies for PCM-only playback.
 
@@ -432,4 +439,3 @@ Before public release packages are attached to GitHub Releases:
 - Should package install always restart the service, or only enable it and leave start/restart to the user?
 - How strict should auth be for localhost-only installs?
 - Can `aiosendspin` make `av`, `numpy`, or `pillow` optional for PCM-only service usage later?
-- Which active branches still need anything from the old plugin-side `sendspin.py` before it is removed?

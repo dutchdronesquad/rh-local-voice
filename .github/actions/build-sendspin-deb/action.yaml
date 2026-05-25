@@ -6,6 +6,9 @@ inputs:
   arch:
     description: Debian target architecture (amd64 or arm64)
     required: true
+  version:
+    description: Debian package version. Release builds pass the GitHub release tag.
+    required: false
   python-version:
     description: CPython version to bundle
     required: false
@@ -37,6 +40,10 @@ runs:
     - name: 🏗 Prepare bundle
       shell: bash
       run: python3 -m tools.build_sendspin_service_deb prepare --architecture ${{ inputs.arch }}
+      env:
+        SENDSPIN_SERVICE_VERSION: ${{ inputs.version }}
     - name: 📦 Package .deb
       shell: bash
       run: python3 -m tools.build_sendspin_service_deb package --architecture ${{ inputs.arch }}
+      env:
+        SENDSPIN_SERVICE_VERSION: ${{ inputs.version }}

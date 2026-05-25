@@ -52,7 +52,15 @@ jobs:
         uses: ./.github/actions/build-sendspin-deb
         with:
           arch: ${{ matrix.arch }}
+          version: ${{ github.event.release.tag_name }}
+      - name: 🧾 Write checksum
+        run: |
+          for deb in dist/sendspin-service_*_${{ matrix.arch }}.deb; do
+            sha256sum "$deb" > "$deb.sha256"
+          done
       - name: ⬆️ Upload release asset
         uses: softprops/action-gh-release@v3.0.0
         with:
-          files: dist/sendspin-service_*.deb
+          files: |
+            dist/sendspin-service_*.deb
+            dist/sendspin-service_*.deb.sha256

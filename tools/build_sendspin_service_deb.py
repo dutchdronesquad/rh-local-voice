@@ -16,6 +16,7 @@ import functools
 import logging
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 import tomllib
@@ -31,6 +32,7 @@ NFPM_CONFIG = PROJECT_ROOT / "packaging" / "nfpm.yaml"
 APP_BUILD_ROOT = BUILD_ROOT / "app"
 RUNTIME_ROOT = BUILD_ROOT / "runtime"
 BIN_ROOT = BUILD_ROOT / "bin"
+DEV_PACKAGE_VERSION = "0.0.0+dev"
 UV = shutil.which("uv") or "uv"
 
 logger = logging.getLogger(__name__)
@@ -66,7 +68,7 @@ def main() -> int:
             shutil.rmtree(BUILD_ROOT, ignore_errors=True)
         runtime_python = _uv_python(args.python_version)
         _build_app(runtime_python)
-        _prepare_bundle(runtime_python)
+        _prepare_bundle(runtime_python, meta.version)
 
     if args.command in ("package", "build"):
         _check_tool("nfpm")
@@ -196,13 +198,13 @@ def _uv_python(python_version: str) -> Path:
     return python
 
 
-def _prepare_bundle(runtime_python: Path) -> None:
+def _prepare_bundle(runtime_python: Path, package_version: str) -> None:
     shutil.rmtree(RUNTIME_ROOT, ignore_errors=True)
     shutil.copytree(runtime_python.parent.parent, RUNTIME_ROOT, symlinks=True)
     _prune_runtime(RUNTIME_ROOT)
     _prune_app(APP_BUILD_ROOT)
     _remove_cache_files(BUILD_ROOT)
-    _write_launcher(BIN_ROOT / PACKAGE_NAME, runtime_python.name)
+    _write_launcher(BIN_ROOT / PACKAGE_NAME, runtime_python.name, package_version)
 
 
 def _prune_runtime(runtime_root: Path) -> None:
@@ -252,11 +254,13 @@ def _remove_cache_files(root: Path) -> None:
         compiled_file.unlink(missing_ok=True)
 
 
-def _write_launcher(target: Path, python_name: str) -> None:
+def _write_launcher(target: Path, python_name: str, package_version: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
+    quoted_version = shlex.quote(package_version)
     target.write_text(
         f"""#!/bin/sh
 set -eu
+export SENDSPIN_SERVICE_VERSION={quoted_version}
 export PYTHONHOME=/opt/{PACKAGE_NAME}/runtime
 export PYTHONPATH=/opt/{PACKAGE_NAME}/app
 exec /opt/{PACKAGE_NAME}/runtime/bin/{python_name} -m sendspin_service "$@"
@@ -298,7 +302,9 @@ def _package(meta: PackageMeta) -> Path:
 
 
 def _package_version() -> str:
-    return str(_pyproject()["project"]["version"])
+    if version := os.environ.get("SENDSPIN_SERVICE_VERSION"):
+        return version.removeprefix("v")
+    return DEV_PACKAGE_VERSION
 
 
 def _service_dependencies() -> list[str]:

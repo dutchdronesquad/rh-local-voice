@@ -1,6 +1,6 @@
 [project]
 name = "local-voice"
-version = "0.1.0"
+version = "0.0.0"
 description = "RotorHazard plugin for fully local server-side voice callout WAV generation"
 readme = "README.md"
 requires-python = ">=3.12"

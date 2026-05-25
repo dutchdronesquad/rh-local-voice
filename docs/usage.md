@@ -21,6 +21,8 @@ Install target:
 sudo apt install ./sendspin-service_0.1.0_arm64.deb
 ```
 
+Download the matching package from the GitHub Release assets. Use `arm64` for 64-bit Raspberry Pi OS and `amd64` for Ubuntu/laptop testing.
+
 Common checks:
 
 ```shell
@@ -95,6 +97,12 @@ Reinstall the same local version:
 ```shell
 sudo apt install --reinstall /tmp/sendspin-service_0.1.0_amd64.deb
 ```
+
+Package CI:
+
+- Pull requests that touch service/package files build the `amd64` `.deb` through `.github/workflows/build.yaml`.
+- Published GitHub Releases build and upload both `amd64` and `arm64` `.deb` assets through `.github/workflows/release.yaml`.
+- The shared build logic lives in `.github/actions/build-sendspin-deb/action.yaml`.
 
 ## Settings
 

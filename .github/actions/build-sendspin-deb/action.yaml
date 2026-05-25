@@ -1,0 +1,35 @@
+---
+name: Build Sendspin Service .deb
+description: Stage the bundle and package it into a .deb using uv and nfpm.
+
+inputs:
+  arch:
+    description: Debian target architecture (amd64 or arm64)
+    required: true
+  python-version:
+    description: CPython version to bundle
+    required: false
+    default: "3.13"
+
+runs:
+  using: composite
+  steps:
+    - name: 🏗 Set up uv
+      uses: astral-sh/setup-uv@v8.1.0
+      with:
+        version: "latest"
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+    - name: 🏗 Install nfpm
+      shell: bash
+      run: |
+        echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' \
+          | sudo tee /etc/apt/sources.list.d/goreleaser.list
+        sudo apt-get update -q
+        sudo apt-get install -y nfpm
+    - name: 🏗 Prepare bundle
+      shell: bash
+      run: uv run python -m tools.build_sendspin_service_deb prepare --architecture ${{ inputs.arch }}
+    - name: 📦 Package .deb
+      shell: bash
+      run: uv run python -m tools.build_sendspin_service_deb package --architecture ${{ inputs.arch }}

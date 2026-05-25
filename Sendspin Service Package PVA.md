@@ -203,6 +203,8 @@ Important measurement history:
 - [x] Build `.deb` with bundled runtime and `nfpm`.
 - [x] Validate install/remove/purge basics on Ubuntu VM.
 - [x] Confirm `wav_paths` is not part of the supported service API.
+- [x] Add GitHub Actions workflow for service package builds.
+- [x] Publish both `amd64` and `arm64` package artifacts on release.
 
 ## Still To Do
 
@@ -212,8 +214,6 @@ Important measurement history:
 - [ ] Verify config survives upgrade install.
 - [ ] Build and test `arm64` package on Raspberry Pi OS.
 - [ ] Confirm Raspberry Pi memory/startup behavior is acceptable.
-- [ ] Add GitHub Actions workflow for service package builds.
-- [ ] Publish both `amd64` and `arm64` package artifacts on release.
 - [ ] Remove old plugin-side `custom_plugins/local_voice/sendspin.py` once active branches no longer need it.
 
 ## Local Testing On Ubuntu VM
@@ -259,7 +259,7 @@ Goal: produce and validate the package on 64-bit Raspberry Pi OS.
 
 Build checklist:
 
-- [ ] Add `arm64` build path in CI or documented local build.
+- [x] Add `arm64` build path in CI or documented local build.
 - [ ] Build `sendspin-service_0.1.0_arm64.deb`.
 - [ ] Record `.deb` size and installed size.
 - [ ] Verify native dependencies are built for `arm64`.
@@ -293,28 +293,26 @@ Acceptance:
 
 Add separate CI workflows so package/release work is repeatable.
 
-Suggested workflows:
+Actual workflows:
 
 ```text
-.github/workflows/sendspin-test.yml
-.github/workflows/sendspin-package.yml
-.github/workflows/sendspin-docker.yml
+.github/workflows/release.yaml       — builds amd64 + arm64 .deb on release, uploads to GitHub Release
+.github/workflows/build.yaml         — builds amd64 .deb on PR when service files change
+.github/actions/build-sendspin-deb/  — composite action shared by both workflows
 ```
 
-Test workflow:
+Still needed:
+
+```text
+.github/workflows/sendspin-docker.yml  — Docker image builds for cloud target
+```
+
+Test workflow (not yet created):
 
 - lint service code
 - compile/import checks
 - API unit tests
 - package metadata checks
-
-Package workflow:
-
-- build `amd64` `.deb`
-- build `arm64` `.deb`
-- smoke test install where practical
-- upload artifacts to GitHub Release
-- publish checksums
 
 Docker workflow:
 
@@ -417,9 +415,9 @@ Before public release packages are attached to GitHub Releases:
 
 - [ ] One source of truth for service version.
 - [ ] Version included in package name, `/health`, Docker tags, and release notes.
-- [ ] Tagged release builds `amd64` and `arm64` `.deb` packages.
+- [x] Tagged release builds `amd64` and `arm64` `.deb` packages.
 - [ ] Tagged release builds `linux/amd64` and `linux/arm64` Docker images.
-- [ ] Release artifacts are named consistently.
+- [x] Release artifacts are named consistently.
 - [ ] Checksums are published.
 - [ ] User update instructions are documented.
 

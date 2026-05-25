@@ -3,6 +3,8 @@ name: Build
 on:
   pull_request:
     paths:
+      - .github/actions/build-sendspin-deb/**
+      - .github/workflows/build.yaml
       - sendspin_service/**
       - tools/build_sendspin_service_deb.py
       - packaging/**

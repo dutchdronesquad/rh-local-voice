@@ -542,9 +542,12 @@ class SendSpinServer:
 def _handle_loop_exception(
     loop: asyncio.AbstractEventLoop, context: dict[str, object]
 ) -> None:
-    """Log loop exceptions but ignore connection errors that can occur."""
+    """Ignore expected connection errors and delegate other loop exceptions."""
     exception = context.get("exception")
     if isinstance(exception, ConnectionError):
+        logger.debug(
+            "Sendspin service: suppressed loop connection error", exc_info=exception
+        )
         return
     loop.default_exception_handler(context)
 

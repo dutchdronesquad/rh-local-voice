@@ -1,5 +1,15 @@
 # Local Voice Callouts Plugin — Plan of Approach
 
+## Current Implementation Note
+
+The plugin has moved to the service-owned Sendspin model. It generates/caches WAV files and sends inline WAV payloads to `sendspin-service` over HTTP. RotorHazard should not start an internal Sendspin server in the normal runtime path.
+
+Older sections below still describe design history and deferred options. Treat the current implementation as:
+
+```text
+RotorHazard plugin -> Piper TTS/WAV cache -> HTTP output -> sendspin-service -> Sendspin players
+```
+
 ## Problem
 
 RotorHazard uses browser TTS for spoken race callouts. In Chrome, some voices are remote services that silently fail when the race network has no internet access, while beeps and MP3 sounds continue to work. The goal is to move spoken callout generation to a fully local speech service running server-side.

@@ -10,15 +10,16 @@ SPEECH_SPEED_OPTION = f"{PLUGIN_PREFIX}_speech_speed"
 NOISE_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_scale"
 NOISE_W_SCALE_OPTION = f"{PLUGIN_PREFIX}_noise_w_scale"
 TEST_PHRASE_OPTION = f"{PLUGIN_PREFIX}_test_phrase"
-
-# Sendspin server
-SENDSPIN_PORT = 8927
+SENDSPIN_SERVICE_URL_OPTION = f"{PLUGIN_PREFIX}_sendspin_service_url"
+SENDSPIN_SERVICE_TIMEOUT_OPTION = f"{PLUGIN_PREFIX}_sendspin_service_timeout"
 
 DEFAULT_TEST_PHRASE = "Pilot Rocket finishes lap three in twelve point four seconds."
 DEFAULT_MODEL = "en_GB-alan-medium"
 DEFAULT_SPEED = "1"
 DEFAULT_NOISE_SCALE = "0.667"
 DEFAULT_NOISE_W_SCALE = "0.8"
+DEFAULT_SENDSPIN_SERVICE_URL = "http://127.0.0.1:8766"
+DEFAULT_SENDSPIN_SERVICE_TIMEOUT = "2"
 
 _HF = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 

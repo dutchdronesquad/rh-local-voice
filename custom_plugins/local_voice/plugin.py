@@ -20,19 +20,22 @@ from .const import (
     DEFAULT_MODEL,
     DEFAULT_NOISE_SCALE,
     DEFAULT_NOISE_W_SCALE,
+    DEFAULT_SENDSPIN_SERVICE_TIMEOUT,
+    DEFAULT_SENDSPIN_SERVICE_URL,
     DEFAULT_SPEED,
     DEFAULT_TEST_PHRASE,
     ENABLE_OPTION,
     NOISE_SCALE_OPTION,
     NOISE_W_SCALE_OPTION,
-    SENDSPIN_PORT,
+    SENDSPIN_SERVICE_TIMEOUT_OPTION,
+    SENDSPIN_SERVICE_URL_OPTION,
     SPEECH_SPEED_OPTION,
     TEST_PHRASE_OPTION,
     VOICE_MODEL_OPTION,
     VOICE_MODELS,
 )
+from .output import SendspinServiceClient
 from .piper import PiperSynthesizer, SynthesisParams, SynthesisResult
-from .sendspin import SendSpinServer
 from .services.lap_callouts import LapCalloutSegments
 from .services.precache import PrecacheManager
 from .services.schedule import ScheduleCalloutManager
@@ -79,8 +82,10 @@ class LocalVoicePlugin:
             tts_dir=cache_root / "tts",
             set_status=self._set_status,
         )
-        self._sendspin = SendSpinServer(port=SENDSPIN_PORT)
-        self._sendspin.start()
+        self._sendspin = SendspinServiceClient(
+            service_url=self._sendspin_service_url,
+            timeout_s=self._sendspin_service_timeout,
+        )
         self._audio_queue = AudioQueue(player=self._sendspin.play)
         self._prepared_settings: VoiceSettings | None = None
         self._synth_pool = ThreadPoolExecutor(
@@ -480,6 +485,25 @@ class LocalVoicePlugin:
             return f"{float(value):.3f}"
         except (TypeError, ValueError):
             return f"{float(default):.3f}"
+
+    def _sendspin_service_url(self) -> str:
+        value = str(
+            self._option(
+                SENDSPIN_SERVICE_URL_OPTION,
+                default=DEFAULT_SENDSPIN_SERVICE_URL,
+            )
+        ).strip()
+        return value or DEFAULT_SENDSPIN_SERVICE_URL
+
+    def _sendspin_service_timeout(self) -> float:
+        value = self._option(
+            SENDSPIN_SERVICE_TIMEOUT_OPTION,
+            default=DEFAULT_SENDSPIN_SERVICE_TIMEOUT,
+        )
+        try:
+            return max(0.2, float(value))
+        except (TypeError, ValueError):
+            return float(DEFAULT_SENDSPIN_SERVICE_TIMEOUT)
 
     def _option(self, name: str, *, default: Any) -> Any:
         value = self._rhapi.db.option(name, default=default)

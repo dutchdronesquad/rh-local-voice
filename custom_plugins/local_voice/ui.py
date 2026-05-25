@@ -12,12 +12,16 @@ from .const import (
     DEFAULT_MODEL,
     DEFAULT_NOISE_SCALE,
     DEFAULT_NOISE_W_SCALE,
+    DEFAULT_SENDSPIN_SERVICE_TIMEOUT,
+    DEFAULT_SENDSPIN_SERVICE_URL,
     DEFAULT_SPEED,
     DEFAULT_TEST_PHRASE,
     ENABLE_OPTION,
     NOISE_SCALE_OPTION,
     NOISE_W_SCALE_OPTION,
     PANEL_ID,
+    SENDSPIN_SERVICE_TIMEOUT_OPTION,
+    SENDSPIN_SERVICE_URL_OPTION,
     SPEECH_SPEED_OPTION,
     TEST_PHRASE_OPTION,
     VOICE_MODEL_OPTION,
@@ -47,6 +51,27 @@ def register_ui(  # noqa: PLR0913
             UIFieldType.CHECKBOX,
             value=False,
             desc="Generate server-side local voice callout WAV files.",
+        ),
+        panel=PANEL_ID,
+    )
+    rhapi.fields.register_option(
+        UIField(
+            SENDSPIN_SERVICE_URL_OPTION,
+            "Sendspin service URL",
+            UIFieldType.TEXT,
+            value=DEFAULT_SENDSPIN_SERVICE_URL,
+            desc="Local HTTP endpoint for sendspin-service.",
+        ),
+        panel=PANEL_ID,
+    )
+    rhapi.fields.register_option(
+        UIField(
+            SENDSPIN_SERVICE_TIMEOUT_OPTION,
+            "Sendspin service timeout",
+            UIFieldType.NUMBER,
+            value=DEFAULT_SENDSPIN_SERVICE_TIMEOUT,
+            desc="HTTP timeout in seconds for service requests.",
+            html_attributes={"min": "0.2", "max": "10.0", "step": "0.1"},
         ),
         panel=PANEL_ID,
     )

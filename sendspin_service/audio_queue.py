@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +34,18 @@ class AudioJob:
     priority: Priority
     expires_at: float
     text: str = field(compare=False)
-    wav_paths: list[Path] = field(compare=False)
+    wav_items: list[WavItem] = field(compare=False)
     play_at: float | None = field(compare=False, default=None)
     volume: float = field(compare=False, default=1.0)
+
+
+@dataclass(frozen=True)
+class WavItem:
+    """A WAV clip supplied either as a path or inline bytes."""
+
+    name: str
+    path: str | None = None
+    data: bytes | None = None
 
 
 class AudioQueue:
@@ -49,20 +57,20 @@ class AudioQueue:
     """
 
     def __init__(
-        self, player: Callable[[list[Path], float, float | None, float], None]
+        self, player: Callable[[list[WavItem], float, float | None, float], None]
     ) -> None:
         """Start the background worker thread."""
         self._player = player
         self._queue: queue.PriorityQueue[AudioJob] = queue.PriorityQueue()
         self._thread = threading.Thread(
-            target=self._worker, daemon=True, name="local_voice_audio"
+            target=self._worker, daemon=True, name="sendspin-service-audio"
         )
         self._thread.start()
 
     def enqueue(  # noqa: PLR0913
         self,
         text: str,
-        wav_paths: list[Path],
+        wav_items: list[WavItem],
         priority: Priority = Priority.NORMAL,
         expiry_sec: float = DEFAULT_EXPIRY_SEC,
         play_at: float | None = None,
@@ -73,7 +81,7 @@ class AudioQueue:
             priority=priority,
             expires_at=time.monotonic() + expiry_sec,
             text=text,
-            wav_paths=wav_paths,
+            wav_items=wav_items,
             play_at=play_at,
             volume=volume,
         )
@@ -102,9 +110,9 @@ class AudioQueue:
                 logger.info(
                     "Sendspin service playing [%s]: %s",
                     job.priority.name,
-                    ", ".join(p.name for p in job.wav_paths),
+                    ", ".join(item.name for item in job.wav_items),
                 )
-                self._player(job.wav_paths, job.expires_at, job.play_at, job.volume)
+                self._player(job.wav_items, job.expires_at, job.play_at, job.volume)
             except Exception:
                 logger.exception("Sendspin service worker error for '%s'", job.text)
             finally:

@@ -2,159 +2,85 @@
 
 ## Problem
 
-The Local Voice plugin needs a reliable way to play generated WAV callouts through Sendspin without making RotorHazard own the Sendspin server process.
+Local Voice needs reliable Sendspin playback without making RotorHazard own the Sendspin server process.
 
-The current mixed model has become harder than it needs to be:
+The mixed model caused avoidable complexity:
 
-- The plugin can start an internal Sendspin server.
-- A separate local Sendspin service can also run on the same host.
-- Both compete for the same Sendspin player port (`8927`) when misconfigured.
-- The plugin has to expose internal/external mode selection and lifecycle handling.
-- Sendspin code changes can touch both plugin code and service code.
+- RotorHazard could start an internal Sendspin server.
+- A separate Sendspin service could also run on the same host.
+- Both competed for port `8927`.
+- The plugin needed lifecycle/mode handling that users should not have to understand.
+- Sendspin changes were split between plugin code and service code.
 
-For a Raspberry Pi install, the better long-term product direction is a dedicated Sendspin service package that is installed once and managed by systemd.
-
----
+For a Raspberry Pi race setup, the service should be installed once, managed by systemd, and reused by the plugin.
 
 ## Decision
 
-Move to a **service-only local Sendspin architecture**.
+Local Sendspin playback should be service-owned, not RotorHazard-plugin-owned.
 
 ```text
-RotorHazard plugin
-  -> generates/caches TTS WAV files
-  -> POSTs playback jobs to http://127.0.0.1:8766
+Local Voice plugin
+  -> generates/caches WAV files
+  -> POSTs inline WAV payloads to http://127.0.0.1:8766
 
 sendspin-service
-  -> receives playback jobs
   -> owns the Sendspin server/player endpoint on :8927
-  -> runs as a systemd service
+  -> runs under systemd
+  -> streams audio to browser/player clients
 ```
 
-The plugin should no longer offer an internal Sendspin server mode as an end-user option.
-
-Later, cloud output is added as a parallel target:
-
-```text
-RotorHazard plugin
-  -> local sendspin-service for PA/speakers
-  -> cloud Sendspin service for QR/phone listeners
-```
-
-Local playback remains the race-day priority. Cloud failures must not delay or block local playback.
-
----
+The plugin should not start an internal Sendspin server during RotorHazard startup. Cloud output can later be added as a parallel target; local service playback remains the race-day priority.
 
 ## User-Facing Goal
 
-The user should not need to understand Python, `uv`, virtualenvs, or package layout.
+The race operator should not need to understand Python, `uv`, virtualenvs, or package layout.
 
-Local install should look like:
+Target install:
 
 ```shell
 sudo apt install ./sendspin-service_0.1.0_arm64.deb
-```
-
-Then:
-
-```shell
 sudo systemctl status sendspin-service
 curl http://127.0.0.1:8766/health
 ```
 
-The plugin should default to:
+The plugin defaults to:
 
 ```text
 Sendspin service URL: http://127.0.0.1:8766
 ```
 
-If the service is missing or stopped, the plugin should show/log a direct message:
+If the service is stopped or missing, the plugin should log a direct message that points at the configured service URL.
 
-```text
-Sendspin service is not reachable at http://127.0.0.1:8766.
-Install or start sendspin-service.
-```
+## Current State
 
----
+- Plugin output uses `SendspinServiceClient` in `custom_plugins/local_voice/output.py`.
+- The service API accepts `wav_files` inline base64 payloads. `wav_paths` is not part of the supported API.
+- The packaged service runs with `DynamicUser=yes`, so it does not need read access to RotorHazard/plugin cache directories.
+- Service packaging uses a uv-built bundled CPython runtime and `nfpm`.
+- The service package dependency set is separate from the plugin dependency set.
+- `av`, `numpy`, and `pillow` are currently required by the `aiosendspin` runtime path.
 
-## Python Runtime Strategy
+The old plugin-side `custom_plugins/local_voice/sendspin.py` may remain temporarily while active branches are cleaned up, but it is no longer the normal runtime path.
 
-Important nuance: a `.deb` by itself does **not** automatically make Python irrelevant. It depends on what the package contains.
+## Runtime Strategy
 
-### Option A: Depends on system Python
+The `.deb` should be self-contained per architecture. It should not depend on the RotorHazard venv, the host Python version, or user-run `pip`/`uv` commands.
 
-The `.deb` declares a dependency such as:
+Chosen direction: bundled CPython runtime plus app dependency directory, built with `uv` and packaged with `nfpm`.
 
-```text
-Depends: python3 (>= 3.12), python3-venv, ...
-```
+Rejected or fallback options:
 
-This is simple, but not ideal for Raspberry Pi users because installed Python versions vary.
+- **System Python dependency**: smaller package, but too dependent on whatever Python version the Pi has installed.
+- **PyInstaller/Nuitka single binary**: still possible later, but less transparent to debug than a bundled runtime layout.
 
-### Option B: Embedded app environment
+Why bundled runtime is preferred:
 
-The `.deb` installs a private app directory under:
+- normal `.deb` install/update UX
+- predictable Python version
+- inspectable Python files and stack traces
+- separate service dependencies from plugin-only dependencies such as Piper/model tooling
 
-```text
-/opt/sendspin-service
-```
-
-That directory contains the service code plus its own Python environment/dependencies.
-
-This avoids `uv` and manual `pip install`, but if the environment still points at `/usr/bin/python3`, the host Python version can still matter.
-
-### Option C: Bundled runtime or single binary
-
-The `.deb` contains either:
-
-- a bundled CPython runtime plus app environment, or
-- a PyInstaller/Nuitka-style executable.
-
-This is the closest to "it does not matter which Python is installed".
-
-**Preferred package goal:** the `.deb` should not depend on the RotorHazard venv and should not require users to run `uv` or `pip`. For the final user-facing package, aim for a self-contained runtime per architecture. During early development, an embedded venv/PEX is acceptable if the limitation is documented.
-
-### Chosen direction
-
-Target **Option C from the start** for the package work.
-
-Reasoning:
-
-- The service becomes a real product component, not a Python setup task.
-- Users should not need to know or care which Python version is installed.
-- Support is simpler when the service package owns its runtime.
-- The install/update UX stays clean: `sudo apt install ./sendspin-service_...deb`.
-
-This makes the `.deb` larger, but that is an acceptable trade-off if the install is reliable.
-
-Expected size range:
-
-```text
-Bundled runtime / binary .deb: roughly 80-250+ MB
-```
-
-The exact size depends on the packaging tool and native dependencies. The packaging work should explicitly track `.deb` size for both `amd64` and `arm64`.
-
-Size reduction tactics:
-
-- Avoid packaging plugin-only dependencies such as Piper TTS into the Sendspin service.
-- Keep `sendspin_service` dependency scope separate from the plugin dependency scope.
-- Prefer runtime tools that can strip unused metadata, tests, caches, and `__pycache__`.
-- Use `--no-cache-dir` / clean build caches before packaging.
-- Strip native binaries where safe.
-- Audit whether heavy dependencies such as `av` are actually needed by the Sendspin service package.
-- Keep model files out of the service package.
-- Build per architecture instead of shipping universal artifacts.
-
-The first package milestone should include a size report:
-
-```text
-amd64 .deb size:
-arm64 .deb size:
-installed size:
-```
-
----
+The trade-off is package size. Current `aiosendspin` imports require `av`, `numpy`, and `pillow`, so the service package is not tiny.
 
 ## Package Targets
 
@@ -172,532 +98,164 @@ Architecture usage:
 
 Do not support `armhf` initially unless 32-bit Raspberry Pi OS becomes a real requirement.
 
-Native dependencies must be built/tested per architecture. Packages like `av` can contain native wheels, so `amd64` and `arm64` artifacts should be produced separately.
-
----
-
-## Debian Package Layout
-
-Target package name:
-
-```text
-sendspin-service
-```
+## Package Layout
 
 Install layout:
 
 ```text
 /opt/sendspin-service/
+  runtime/
+  app/
   bin/sendspin-service
-  app/...
 
 /etc/default/sendspin-service
-
 /lib/systemd/system/sendspin-service.service
 ```
 
-Default config:
+Default service config:
 
-```shell
+```text
 SENDSPIN_INGEST_HOST=127.0.0.1
 SENDSPIN_INGEST_PORT=8766
+SENDSPIN_HOST=0.0.0.0
 SENDSPIN_PORT=8927
+SENDSPIN_ADVERTISE=true
 SENDSPIN_MAX_BODY_MB=50
 ```
 
-Systemd service:
+Systemd behavior:
 
-```ini
-[Unit]
-Description=Sendspin Service
-After=network-online.target
-Wants=network-online.target
+- enable and restart service after install/upgrade
+- preserve `/etc/default/sendspin-service` on upgrade
+- stop and disable service on remove
+- remove config/state on purge
 
-[Service]
-Type=simple
-EnvironmentFile=-/etc/default/sendspin-service
-ExecStart=/opt/sendspin-service/bin/sendspin-service
-Restart=on-failure
-RestartSec=2
-DynamicUser=yes
-StateDirectory=sendspin-service
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Post-install behavior:
-
-- `systemctl daemon-reload`
-- `systemctl enable sendspin-service`
-- start or restart service
-
-Config in `/etc/default/sendspin-service` should be preserved on upgrade.
-
----
-
-## Update Model
-
-Start with GitHub Releases.
-
-Install:
+Useful user/admin commands:
 
 ```shell
 sudo apt install ./sendspin-service_0.1.0_arm64.deb
-```
-
-Upgrade:
-
-```shell
-sudo apt install ./sendspin-service_0.2.0_arm64.deb
-```
-
-Remove:
-
-```shell
+sudo apt install --reinstall ./sendspin-service_0.1.0_arm64.deb
+systemctl status sendspin-service
+journalctl -u sendspin-service -n 80 --no-pager
 sudo apt remove sendspin-service
-```
-
-Purge:
-
-```shell
 sudo apt purge sendspin-service
 ```
 
-Later, an apt repository can be added without changing the package model:
+The target user should not need Python, `uv`, `pip`, or knowledge of the package layout on the race machine.
+
+## Package Strategy
+
+Chosen direction: self-contained `.deb` with bundled CPython runtime and app dependencies.
+
+Reasons:
+
+- avoids depending on the host Python version
+- keeps install/update UX to a normal `.deb`
+- keeps Python files and stack traces inspectable
+- is easier to debug than an opaque single binary
+
+Build command:
 
 ```shell
-sudo apt update
-sudo apt install sendspin-service
-sudo apt upgrade
+python -m tools.build_sendspin_service_deb
 ```
 
----
+Build inputs:
 
-## Service API
+- `tools/build_sendspin_service_deb.py`
+- `packaging/nfpm.yaml`
+- `packaging/deb/sendspin-service.service`
+- `packaging/deb/sendspin-service.default`
+- `packaging/deb/postinst`
+- `packaging/deb/prerm`
+- `packaging/deb/postrm`
 
-Keep the service API stable because both local and cloud deployments can share it.
+## Current Measurements
 
-Required endpoints:
+Latest observed package/runtime characteristics on `amd64` after restoring required `av` runtime dependency:
 
 ```text
-GET  /health
-POST /v1/play
-POST /v1/stop
+.deb size: ~66.5 MiB
+installed size: ~237.4 MiB
+runtime memory: ~191.5 MiB RSS, ~192.2 MiB peak
+startup/test CPU: ~3.2s
+large dependencies: av, av.libs, numpy, numpy.libs, pillow.libs
 ```
 
-Health response should include version:
+Important measurement history:
 
-```json
-{
-  "ok": true,
-  "version": "0.1.0",
-  "sendspin_port": 8927,
-  "connected_players": 0
-}
-```
+- PyInstaller prototype: ~86.1 MiB `.deb`, ~86.9 MiB installed.
+- Bundled runtime after pruning without NumPy: ~15.3 MiB `.deb`, ~69.2 MiB installed, invalid because `aiosendspin.server` imports NumPy.
+- Bundled runtime with `numpy`/`pillow` but without `av`: starts, but fails during playback because `aiosendspin` imports PyAV.
+- Bundled runtime with `av`/`numpy`/`pillow`: larger, but currently correct.
 
-The plugin can use this later to warn about old service versions.
+## Completed
 
----
+- [x] Add standalone `sendspin_service/` package.
+- [x] Add service HTTP API with `/health`, `/v1/play`, and `/v1/stop`.
+- [x] Add service-side queue and Sendspin adapter.
+- [x] Add explicit startup failure for Sendspin port conflicts.
+- [x] Add clean service shutdown path.
+- [x] Switch plugin playback to service HTTP output.
+- [x] Stop RotorHazard from binding Sendspin port `8927`.
+- [x] Use inline WAV payloads instead of service-side filesystem reads.
+- [x] Split plugin dependencies from service dependencies.
+- [x] Build `.deb` with bundled runtime and `nfpm`.
+- [x] Validate install/remove/purge basics on Ubuntu VM.
+- [x] Confirm `wav_paths` is not part of the supported service API.
 
-## Plugin Simplification
+## Still To Do
 
-Remove the internal/external local mode choice from the product model, but do
-not delete the internal implementation until the service package has shipped and
-been validated on `amd64` and `arm64`.
-
-Eventually remove:
-
-- `Sendspin local mode`
-- `Internal server`
-- `Disabled` local mode
-- `InternalSendspinOutput`
-- plugin-managed `SendSpinServer`
-- plugin port preflight for `8927`
-- live switching between internal/external modes
-
-Migration rule:
-
-- Internal Sendspin may remain in code as a hidden/legacy fallback while the
-  package is being built and tested.
-- Internal Sendspin should not be the default or recommended path.
-- Internal Sendspin should only be removed after the packaged service has passed
-  the Ubuntu VM lifecycle tests and Raspberry Pi `arm64` install tests.
-- Until removal, keep the internal path isolated so new service work does not
-  add more plugin-side `aiosendspin` behavior.
-
-Keep:
-
-- `Sendspin service URL`
-- `Sendspin timeout`
-- clear failure message when service is unreachable
-
-The plugin stays responsible for:
-
-- listening to RotorHazard events/filters
-- generating/caching Piper WAV files
-- queueing callouts
-- dispatching playback jobs to configured output targets
-
-The service stays responsible for:
-
-- owning Sendspin server lifecycle
-- player connections
-- playback stop/resume behavior
-- service health/version
-
----
-
-## Code Ownership Target
-
-Current state has Sendspin server logic in plugin code and service glue in `sendspin_service/`.
-
-Target state:
-
-```text
-custom_plugins/local_voice/
-  plugin.py
-  output.py                 # HTTP client only
-  piper.py
-  ...
-
-sendspin_service/
-  server.py                 # HTTP ingest API
-  sendspin.py               # Sendspin server adapter
-  audio_queue.py
-  __main__.py
-  Dockerfile
-
-packaging/
-  deb/
-    control
-    postinst
-    prerm
-    postrm
-    sendspin-service.service
-    sendspin-service.default
-```
-
-All Sendspin server/process code should live under `sendspin_service/`.
-
-The plugin should not import `aiosendspin` directly after the migration. It should only send HTTP requests to the service.
-
----
-
-## Open PR / Migration Strategy
-
-There are open PRs that still modify `custom_plugins/local_voice/sendspin.py`.
-
-Recommended order:
-
-1. Pause new feature work touching `sendspin.py`.
-2. Merge or rebase important PR changes into the current branch.
-3. Move the final Sendspin server adapter into `sendspin_service/sendspin.py`.
-4. Remove plugin imports of `SendSpinServer`.
-5. Delete `custom_plugins/local_voice/sendspin.py` or leave a temporary shim only if needed for compatibility.
-6. Update open PRs to target `sendspin_service/sendspin.py` instead.
-
-Avoid keeping two active copies. A temporary shim is acceptable during migration, but only one file should own the implementation.
-
----
-
-## Build And Deployment Workflows
-
-Add separate CI workflows for service packaging.
-
-Suggested workflows:
-
-```text
-.github/workflows/sendspin-service-test.yml
-.github/workflows/sendspin-service-package.yml
-.github/workflows/sendspin-service-docker.yml
-```
-
-Test workflow:
-
-- lint service code
-- compile/import checks
-- API unit tests
-- package metadata checks
-
-Package workflow:
-
-- build `amd64` `.deb`
-- build `arm64` `.deb`
-- smoke test install in Ubuntu container/VM where possible
-- upload artifacts on GitHub Release
-
-Docker workflow:
-
-- build image for `linux/amd64`
-- build image for `linux/arm64`
-- push to GHCR
-
-Artifacts:
-
-```text
-sendspin-service_0.1.0_amd64.deb
-sendspin-service_0.1.0_arm64.deb
-ghcr.io/<owner>/sendspin-service:0.1.0
-```
-
----
+- [ ] Verify plugin playback through installed `sendspin-service` on the Ubuntu VM after the HTTP-output switch.
+- [ ] Rebuild `.deb` after the final dependency set and record updated size.
+- [ ] Verify `/opt/sendspin-service/bin/sendspin-service --help` from the installed package.
+- [ ] Verify config survives upgrade install.
+- [ ] Build and test `arm64` package on Raspberry Pi OS.
+- [ ] Confirm Raspberry Pi memory/startup behavior is acceptable.
+- [ ] Add GitHub Actions workflow for service package builds.
+- [ ] Publish both `amd64` and `arm64` package artifacts on release.
+- [ ] Remove old plugin-side `custom_plugins/local_voice/sendspin.py` once active branches no longer need it.
 
 ## Local Testing On Ubuntu VM
 
-The Ubuntu VM can test the full `.deb` lifecycle for `amd64`.
+The Ubuntu VM is the primary `amd64` package lifecycle test environment.
 
 ```shell
-sudo apt install ./sendspin-service_0.1.0_amd64.deb
+python -m tools.build_sendspin_service_deb
+cp dist/sendspin-service_0.1.0_amd64.deb /tmp/
+sudo apt install /tmp/sendspin-service_0.1.0_amd64.deb
 systemctl status sendspin-service
 curl http://127.0.0.1:8766/health
-sudo apt install ./sendspin-service_0.2.0_amd64.deb
+```
+
+Upgrade/reinstall tests:
+
+```shell
+sudo apt install --reinstall /tmp/sendspin-service_0.1.0_amd64.deb
+sudo apt install /tmp/sendspin-service_0.1.1_amd64.deb
+```
+
+Removal tests:
+
+```shell
 sudo apt remove sendspin-service
 sudo apt purge sendspin-service
 ```
 
-Test cases:
+Acceptance:
 
-- install succeeds without `uv`
+- install succeeds without target-machine `uv`, `pip`, or Python setup
 - service starts after install
-- `/health` works
+- `/health` returns `ok`, `version`, `sendspin_port`, and `connected_players`
 - config file is used
 - config survives upgrade
-- remove stops service but leaves config
-- purge removes config/state as expected
-- port conflicts produce clear logs
+- remove stops service but preserves config
+- purge removes config/state
+- port conflicts on `8766` and `8927` produce clear logs
 
-Pi-specific `arm64` testing is still required before release.
+## Raspberry Pi `arm64` Package
 
----
-
-## Docker / Cloud Path
-
-Keep Docker as the primary cloud deployment format.
-
-```shell
-docker run \
-  -p 8766:8766 \
-  -p 8927:8927 \
-  ghcr.io/<owner>/sendspin-service:0.1.0
-```
-
-Cloud adds:
-
-- HTTPS termination
-- token auth
-- event/session identity
-- QR landing page/player join flow
-- possibly persistence/cleanup for event sessions
-
-Do not let cloud requirements complicate the local `.deb` package. Keep the API shared, but deployment concerns separate.
-
----
-
-## Phased Plan
-
-### Phase 0 — Freeze and PR alignment
-
-Goal: stop adding more moving parts while Sendspin ownership is being moved.
-
-Checklist:
-
-- [ ] Identify open PRs that modify `custom_plugins/local_voice/sendspin.py`.
-- [ ] Decide which PR changes are still wanted.
-- [ ] Merge, cherry-pick, or rebase those Sendspin changes before moving files.
-- [ ] Pause new plugin-side Sendspin server changes until Phase 2 is complete.
-- [ ] Add a note to active PRs that future Sendspin server work targets `sendspin_service/sendspin.py`.
-
-Acceptance:
-
-- [ ] There is one agreed branch that contains the final current Sendspin behavior.
-- [ ] No unreviewed PR still needs to be applied to the old plugin `sendspin.py`.
-
-Docs:
-
-- [ ] Add a short migration note to this PVA if any PR needs manual follow-up.
-
----
-
-### Phase 1 — Product decision cleanup
-
-Goal: make the local service the preferred local playback path while keeping
-the internal implementation available as a temporary legacy fallback.
-
-Plugin checklist:
-
-- [ ] Remove **Sendspin local mode** from the UI.
-- [ ] Remove **Internal server** and **Disabled** local mode values.
-- [ ] If internal fallback is still needed, hide it behind an explicit legacy/dev flag instead of normal UI.
-- [ ] Rename **External Sendspin URL** to **Sendspin service URL**.
-- [ ] Rename **External Sendspin timeout** to **Sendspin service timeout**.
-- [ ] Default service URL to `http://127.0.0.1:8766`.
-- [ ] Keep plugin audio enable/disable as the top-level plugin control.
-- [ ] Replace internal mode startup behavior with service-only HTTP dispatch.
-- [ ] Make missing service errors short and actionable.
-
-Code cleanup checklist:
-
-- [ ] Keep `InternalSendspinOutput` only as a temporary hidden/legacy fallback.
-- [ ] Avoid starting internal Sendspin during RotorHazard startup.
-- [ ] Avoid live switching between internal/external modes in normal user flows.
-- [ ] Keep only the HTTP output client for local service playback.
-- [ ] Keep a simple disabled/no-op path only if needed when plugin audio is disabled.
-
-Acceptance:
-
-- [ ] Starting RotorHazard never binds port `8927`.
-- [ ] Starting RotorHazard does not require the Sendspin service to already be running.
-- [ ] Pressing **Play audio check** POSTs to the configured service URL.
-- [ ] If the service is stopped, the plugin logs a clear "service not reachable" message.
-- [ ] If the service is running, browser playback still works.
-
-Docs:
-
-- [ ] Update `docs/usage.md` to describe service-only local playback.
-- [ ] Update `Local Voice Assistant Plugin PVA.md` to mark internal server as legacy/superseded.
-- [ ] Update screenshots or setting names if screenshots are added later.
-
-Internal removal gate:
-
-- [ ] `amd64` `.deb` install/upgrade/remove/purge lifecycle has passed.
-- [ ] `arm64` `.deb` install and race-flow test has passed on Raspberry Pi.
-- [ ] Service failure messages are clear enough for normal users.
-- [ ] Open PRs touching the old plugin `sendspin.py` have been resolved.
-- [ ] Only after these are true, remove plugin-managed internal Sendspin code.
-
----
-
-### Phase 2 — Service ownership cleanup
-
-Goal: move all Sendspin server/process code into `sendspin_service/` and keep plugin code as HTTP client only.
-
-Current migration status: the repository now contains a first standalone
-`sendspin_service/` package with its own service-side `audio_queue.py`,
-`sendspin.py`, and `server.py`. This is intentionally duplicated from the
-plugin-side playback path for the transition. The plugin should keep its
-internal Sendspin path until the service package and HTTP output path have been
-tested end to end.
-
-Service code checklist:
-
-- [x] Add a first Sendspin adapter implementation to `sendspin_service/sendspin.py`.
-- [x] Keep `sendspin_service/server.py` as the HTTP ingest API.
-- [x] Keep `sendspin_service/audio_queue.py` owned by the service.
-- [x] Avoid importing RotorHazard plugin modules from `sendspin_service`.
-- [x] Add `version` to `/health`.
-- [x] Smoke-test `/health`, `/v1/play`, and `/v1/stop` outside the sandbox.
-- [x] Add clear startup errors for port conflicts on `8766` and `8927`.
-- [x] Keep ingest body limit configurable with `SENDSPIN_MAX_BODY_MB`.
-
-Plugin code checklist:
-
-- [ ] Remove `custom_plugins/local_voice/sendspin.py` implementation.
-- [ ] Ensure `custom_plugins/local_voice` no longer imports `aiosendspin`.
-- [ ] Ensure `output.py` only contains service/cloud HTTP outputs and small orchestration code.
-- [ ] Keep plugin TTS/cache code independent from service runtime dependencies.
-
-Dependency checklist:
-
-- [ ] Split dependency thinking into plugin dependencies and service dependencies.
-- [ ] Audit whether `sendspin_service` really needs `av`, `piper-tts`, `numpy`, or `pillow`.
-- [ ] Keep Piper/model dependencies out of the service package.
-- [ ] Keep Sendspin service package as small as practical.
-
-Acceptance:
-
-- [x] `python -m sendspin_service --help` works from the repo.
-- [x] `python -m sendspin_service` starts without importing RotorHazard-only modules.
-- [ ] `rg "aiosendspin" custom_plugins/local_voice` returns no plugin-side server usage.
-- [x] The plugin can be loaded by RotorHazard without `sendspin_service` installed as a Python package.
-
-Docs:
-
-- [x] Update `docs/architecture.md` to show plugin/service separation.
-- [x] Update `docs/usage.md` to stop referring to the standalone service as the default while the plugin still owns internal Sendspin.
-- [x] Add a small service API section with `/health`, `/v1/play`, `/v1/stop`.
-
----
-
-### Phase 3 — Bundled `.deb` package MVP on `amd64`
-
-Goal: build and test the first self-contained `.deb` package on this Ubuntu VM.
-
-Status note: the current branch uses PyInstaller as an experimental build path to validate the `.deb`, systemd, and self-contained runtime shape. This is not yet the final production packaging decision. Before release, compare PyInstaller with at least Nuitka and a bundled CPython/app-runtime layout against artifact size, startup time, debugability, `arm64` build reliability, CI complexity, and dependency isolation.
-
-Packaging checklist:
-
-- [x] Add experimental PyInstaller build path for the first package MVP.
-- [x] Add package source under `packaging/deb/`.
-- [x] Add Debian `control`.
-- [x] Add systemd unit template.
-- [x] Add `/etc/default/sendspin-service` config template.
-- [x] Add maintainer scripts: `postinst`, `prerm`, `postrm` as needed.
-- [x] Add a build script that stages the app under `/opt/sendspin-service`.
-- [x] Install state/work directory under `/var/lib/sendspin-service` or use `StateDirectory`.
-- [x] Build a package artifact that installs without `uv`, `pip`, or RotorHazard venv.
-
-Runtime checklist:
-
-- [x] Add build path for `/opt/sendspin-service/bin/sendspin-service`.
-- [x] Ensure executable includes or owns the required Python runtime.
-- [ ] Ensure service starts through systemd.
-- [ ] Ensure `/health` returns `ok`, `version`, `sendspin_port`, and `connected_players`.
-
-Size checklist:
-
-- [x] Record `.deb` size.
-- [x] Record installed size.
-- [ ] Strip or remove unnecessary caches, metadata, tests, and `__pycache__`.
-- [ ] Confirm Piper models and plugin-only dependencies are not included.
-- [ ] Document any large dependency that cannot be removed.
-
-Current `amd64` PyInstaller package measurement:
-
-```text
-amd64 .deb size: 86.1 MiB
-amd64 installed size: 86.9 MiB
-amd64 executable check: build/sendspin-service/pyinstaller/dist/sendspin-service --help
-```
-
-Production packaging decision still required:
-
-- [ ] Compare PyInstaller with Nuitka.
-- [ ] Compare PyInstaller with a bundled CPython/app-runtime layout.
-- [ ] Build candidates with a fixed release Python version, preferably Python 3.12 or 3.13 rather than whatever the local shell provides.
-- [ ] Choose the final production packaging strategy based on size, startup behavior, debugability, `arm64` build reliability, CI complexity, and dependency isolation.
-
-Ubuntu VM lifecycle checklist:
-
-- [x] `sudo apt install ./sendspin-service_0.1.0_amd64.deb`
-- [x] `systemctl status sendspin-service`
-- [x] `curl http://127.0.0.1:8766/health`
-- [ ] `sudo apt install ./sendspin-service_0.1.1_amd64.deb`
-- [ ] Confirm `/etc/default/sendspin-service` survives upgrade.
-- [x] `sudo apt remove sendspin-service`
-- [x] Confirm service stops and config remains.
-- [x] `sudo apt purge sendspin-service`
-- [x] Confirm config/state cleanup behavior is correct.
-
-Acceptance:
-
-- [x] A user can install and start the service with only `sudo apt install ./...deb`.
-- [x] No user-facing install step mentions `uv`, `pip`, or Python version.
-- [ ] The plugin can play audio through the installed service on the Ubuntu VM.
-- [x] Package size is recorded and judged acceptable for `amd64`.
-
-Docs:
-
-- [ ] Add `docs/sendspin-service-package.md` or equivalent install guide.
-- [ ] Document install, upgrade, status, logs, remove, and purge commands.
-- [ ] Document config file location and defaults.
-
----
-
-### Phase 4 — Raspberry Pi `arm64` package
-
-Goal: produce the Raspberry Pi package and validate it on 64-bit Raspberry Pi OS.
+Goal: produce and validate the package on 64-bit Raspberry Pi OS.
 
 Build checklist:
 
@@ -716,69 +274,100 @@ Pi install checklist:
 - [ ] Confirm Local Voice plugin can POST to `127.0.0.1:8766`.
 - [ ] Confirm **Play audio check** works.
 - [ ] Confirm race callouts work under normal event load.
+- [ ] Confirm memory/startup behavior is acceptable on the Pi.
 
 Failure checklist:
 
-- [ ] Stop service and confirm plugin shows/logs clear unreachable-service message.
+- [ ] Stop service and confirm plugin logs a clear unreachable-service message.
 - [ ] Occupy port `8927` and confirm service logs clear port conflict.
 - [ ] Occupy port `8766` and confirm service logs clear port conflict.
 - [ ] Reboot Pi and confirm service starts automatically.
 
 Acceptance:
 
-- [ ] `arm64` package is usable by a normal Pi user with one `apt install` command.
-- [ ] Package size is recorded and judged acceptable for Pi installs.
-- [ ] Service remains independent from RotorHazard restarts.
+- `arm64` package is usable by a normal Pi user with one `apt install` command.
+- package size is recorded and judged acceptable for Pi installs.
+- service remains independent from RotorHazard restarts.
 
-Docs:
+## Build And Deployment Workflows
 
-- [ ] Add Pi-specific install section.
-- [ ] Add troubleshooting section for service status, logs, and port conflicts.
-- [ ] Add architecture selection guidance: `amd64` vs `arm64`.
+Add separate CI workflows so package/release work is repeatable.
 
----
+Suggested workflows:
 
-### Phase 5 — Release automation
+```text
+.github/workflows/sendspin-test.yml
+.github/workflows/sendspin-package.yml
+.github/workflows/sendspin-docker.yml
+```
 
-Goal: make service package builds repeatable and publishable.
+Test workflow:
 
-Workflow checklist:
+- lint service code
+- compile/import checks
+- API unit tests
+- package metadata checks
 
-- [ ] Add `.github/workflows/sendspin-service-test.yml`.
-- [ ] Add `.github/workflows/sendspin-service-package.yml`.
-- [ ] Add `.github/workflows/sendspin-service-docker.yml`.
-- [ ] Build `amd64` `.deb` in CI.
-- [ ] Build `arm64` `.deb` in CI.
-- [ ] Run smoke test install where practical.
-- [ ] Upload `.deb` artifacts to GitHub Release.
-- [ ] Publish checksums.
-- [ ] Tag Docker images with release version and `latest`.
+Package workflow:
 
-Versioning checklist:
+- build `amd64` `.deb`
+- build `arm64` `.deb`
+- smoke test install where practical
+- upload artifacts to GitHub Release
+- publish checksums
 
-- [ ] Define one service version source.
-- [ ] Include version in binary/package name.
-- [ ] Include version in `/health`.
-- [ ] Include version in Docker image labels.
-- [ ] Add changelog/release note template.
+Docker workflow:
 
-Acceptance:
+- build `linux/amd64` image
+- build `linux/arm64` image
+- push to GHCR
+- tag images with release version and `latest`
 
-- [ ] A tagged release produces both `.deb` packages.
-- [ ] Release artifacts are named consistently.
-- [ ] A user can download the correct package from GitHub Releases.
+Expected artifacts:
 
-Docs:
+```text
+sendspin-service_0.1.0_amd64.deb
+sendspin-service_0.1.0_arm64.deb
+ghcr.io/<owner>/sendspin-service:0.1.0
+```
 
-- [ ] Add release process documentation for maintainers.
-- [ ] Add update instructions for users.
-- [ ] Add checksum verification instructions if desired.
+## Docker / Cloud Path
 
----
+Docker is the primary deployment format for cloud Sendspin targets. The local Pi path stays `.deb` + systemd.
 
-### Phase 6 — Cloud target and QR flow
+Example target shape:
 
-Goal: add cloud output as a parallel target without weakening local PA reliability.
+```shell
+docker run \
+  -p 8766:8766 \
+  -p 8927:8927 \
+  ghcr.io/<owner>/sendspin-service:0.1.0
+```
+
+Cloud deployment adds concerns that should not leak into the local package:
+
+- HTTPS termination
+- token auth
+- event/session identity
+- QR landing page/player join flow
+- session cleanup/expiry
+- observability for remote playback issues
+
+Keep the local and cloud API shared where practical:
+
+- `GET /health`
+- `POST /v1/play`
+- `POST /v1/stop`
+
+But keep deployment concerns separate:
+
+- `.deb`/systemd for local Pi/Ubuntu installs
+- Docker/GHCR for cloud and container deployments
+- plugin fan-out later for local + cloud output in parallel
+
+## Cloud Target And QR Flow
+
+Goal: allow remote listeners to join with a QR code while local PA playback remains independent.
 
 Plugin checklist:
 
@@ -791,7 +380,7 @@ Plugin checklist:
 
 Cloud service checklist:
 
-- [ ] Keep shared `/health`, `/v1/play`, `/v1/stop` semantics.
+- [ ] Keep shared service API semantics.
 - [ ] Add HTTPS deployment pattern.
 - [ ] Add auth/token handling.
 - [ ] Add event/session identity.
@@ -808,21 +397,41 @@ Docker checklist:
 
 Acceptance:
 
-- [ ] Local PA playback remains functional if cloud is down.
-- [ ] Phone listener can join with QR code and hear callouts.
-- [ ] Cloud failures are visible but non-fatal.
+- local PA playback remains functional if cloud is down.
+- phone listener can join with QR code and hear callouts.
+- cloud failures are visible but non-fatal.
 
-Docs:
+## Release Gate
 
-- [ ] Add cloud setup guide.
-- [ ] Add QR join/operator guide.
-- [ ] Add security/token guidance.
+Before making the service-only path the release default:
 
----
+- Ubuntu VM package install/upgrade/remove/purge passes.
+- Raspberry Pi `arm64` package install and playback test passes.
+- `Play audio check` works through the installed service.
+- Service logs clear errors for port conflicts and unreachable clients.
+- Documentation covers install, upgrade, logs, remove, and purge.
+
+## Release Automation Gate
+
+Before public release packages are attached to GitHub Releases:
+
+- [ ] One source of truth for service version.
+- [ ] Version included in package name, `/health`, Docker tags, and release notes.
+- [ ] Tagged release builds `amd64` and `arm64` `.deb` packages.
+- [ ] Tagged release builds `linux/amd64` and `linux/arm64` Docker images.
+- [ ] Release artifacts are named consistently.
+- [ ] Checksums are published.
+- [ ] User update instructions are documented.
+
+## Later
+
+- Cloud Sendspin target for QR/phone listeners.
+- Optional service auth if the ingest API is bound beyond localhost.
+- Possible upstream work with `aiosendspin` to avoid importing heavy optional roles/dependencies for PCM-only playback.
 
 ## Open Questions
 
-- Which bundling tool gives the best balance between self-contained runtime, package size, and maintainability?
-- Should install auto-start the service, or only enable it and leave start to the user?
-- How strict should token auth be for localhost-only service installs?
-- Which open PRs must be merged before moving Sendspin implementation out of the plugin package?
+- Should package install always restart the service, or only enable it and leave start/restart to the user?
+- How strict should auth be for localhost-only installs?
+- Can `aiosendspin` make `av`, `numpy`, or `pillow` optional for PCM-only service usage later?
+- Which active branches still need anything from the old plugin-side `sendspin.py` before it is removed?

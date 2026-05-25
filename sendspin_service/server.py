@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import contextlib
 import json
 import logging
@@ -10,11 +12,10 @@ import os
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from .audio_queue import DEFAULT_EXPIRY_SEC, AudioQueue, Priority
+from .audio_queue import DEFAULT_EXPIRY_SEC, AudioQueue, Priority, WavItem
 from .sendspin import SendSpinServer
 
 if TYPE_CHECKING:
@@ -84,9 +85,9 @@ class SendspinService:
 
     def play(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Queue a playback request from a JSON payload."""
-        wav_paths = _wav_paths(payload.get("wav_paths"))
-        if not wav_paths:
-            raise ValueError("wav_paths must contain at least one path")
+        wav_items = _wav_items(payload)
+        if not wav_items:
+            raise ValueError("wav_files must contain at least one WAV")
         priority = _priority(payload.get("priority"))
         expiry_sec = _float_value(payload.get("expiry_sec"), DEFAULT_EXPIRY_SEC)
         play_at = _optional_float(payload.get("play_at"))
@@ -94,13 +95,13 @@ class SendspinService:
         text = str(payload.get("text") or "service audio")
         self._queue.enqueue(
             text=text,
-            wav_paths=wav_paths,
+            wav_items=wav_items,
             priority=priority,
             expiry_sec=expiry_sec,
             play_at=play_at,
             volume=volume,
         )
-        return {"queued": True, "count": len(wav_paths)}
+        return {"queued": True, "count": len(wav_items)}
 
     def stop(self) -> dict[str, Any]:
         """Stop active playback and clear queued jobs."""
@@ -193,10 +194,33 @@ class _ServiceHTTPServer(ThreadingHTTPServer):
         self.service = service
 
 
-def _wav_paths(value: object) -> list[Path]:
+def _wav_items(payload: dict[str, Any]) -> list[WavItem]:
+    if "wav_paths" in payload:
+        raise ValueError("wav_paths are not supported; use wav_files")
+    return _inline_wav_items(payload.get("wav_files"))
+
+
+def _inline_wav_items(value: object) -> list[WavItem]:
     if not isinstance(value, list):
         return []
-    return [Path(item).expanduser() for item in value if isinstance(item, str)]
+    items: list[WavItem] = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            raise TypeError("wav_files entries must be objects")
+        name = str(item.get("name") or f"inline-{index}.wav")
+        data = item.get("data")
+        encoding = str(item.get("encoding") or "base64").lower()
+        if not isinstance(data, str):
+            raise TypeError("wav_files entries must include string data")
+        if encoding != "base64":
+            raise ValueError("wav_files entries only support base64 encoding")
+        try:
+            wav_data = base64.b64decode(data, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            message = "wav_files entries must contain valid base64 data"
+            raise ValueError(message) from exc
+        items.append(WavItem(name=name, data=wav_data))
+    return items
 
 
 def _priority(value: object) -> Priority:

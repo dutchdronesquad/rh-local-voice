@@ -198,6 +198,13 @@ select {
   flex: 0 0 auto;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+
 .header h1 {
   font-size: 0.95rem;
   line-height: 1.2;
@@ -619,6 +626,35 @@ select:focus-visible {
   letter-spacing: 0.01em;
 }
 
+.icon-button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--subtle);
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.1s;
+}
+
+.icon-button:hover {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 9%, var(--surface));
+  color: var(--blue);
+}
+
+.icon-button:active {
+  transform: scale(0.98);
+}
+
+.icon-button svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
 .header-connection {
   min-width: 86px;
   min-height: 32px;
@@ -794,6 +830,131 @@ select:focus-visible {
   text-decoration: underline;
 }
 
+.share-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 0.42);
+  backdrop-filter: blur(8px);
+  animation: share-backdrop-in 180ms ease-out;
+}
+
+.share-backdrop.closing {
+  animation: share-backdrop-out 180ms ease-in forwards;
+}
+
+.share-sheet {
+  width: min(100%, 360px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transform-origin: 50% 58%;
+  animation: share-sheet-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.share-backdrop.closing .share-sheet {
+  animation: share-sheet-out 180ms cubic-bezier(0.7, 0, 0.84, 0) forwards;
+}
+
+.share-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-header h2 {
+  color: var(--text);
+  font-size: 0.94rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.share-copy {
+  padding: 0.85rem 1rem 0;
+  color: var(--subtle);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.qr-code {
+  display: block;
+  width: min(100% - 2rem, 280px);
+  height: auto;
+  margin: 1rem auto 1.15rem;
+  border-radius: 8px;
+}
+
+.share-url {
+  margin: -0.35rem 1rem 1rem;
+  overflow-wrap: anywhere;
+  color: var(--subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.qr-error {
+  padding: 1rem;
+  color: var(--red);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+@keyframes share-backdrop-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes share-backdrop-out {
+  from {
+    opacity: 1;
+    backdrop-filter: blur(8px);
+  }
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+}
+
+@keyframes share-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes share-sheet-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
 @media (max-width: 520px) {
   .shell {
     padding: 1rem;
@@ -816,5 +977,71 @@ select:focus-visible {
 
   .metric:last-child {
     border-bottom: 0;
+  }
+
+  .share-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .share-sheet {
+    width: 100%;
+    max-height: min(92dvh, 540px);
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 20px 20px 0 0;
+    padding-top: 0.55rem;
+    animation-name: share-drawer-in;
+  }
+
+  .share-sheet::before {
+    content: "";
+    display: block;
+    width: 42px;
+    height: 4px;
+    margin: 0 auto 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--subtle) 42%, transparent);
+  }
+
+  .share-header {
+    padding-top: 0.7rem;
+  }
+
+  .share-url {
+    margin-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .share-backdrop.closing .share-sheet {
+    animation-name: share-drawer-out;
+  }
+}
+
+@keyframes share-drawer-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes share-drawer-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-backdrop,
+  .share-backdrop.closing,
+  .share-sheet,
+  .share-backdrop.closing .share-sheet {
+    animation-duration: 1ms;
   }
 }

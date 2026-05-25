@@ -33,6 +33,11 @@ The plugin sends `/v1/play` requests with inline `wav_files` payloads. The servi
 - `sendspin_service/audio_queue.py`: service-side priority queue.
 - `sendspin_service/sendspin.py`: synchronous adapter around `aiosendspin`.
 
+The same service code is packaged in two deployment formats:
+
+- `.deb` + systemd for local Pi/Ubuntu timing-server installs.
+- Docker image for container/cloud deployments, with the browser player served from `/player`.
+
 Service endpoints:
 
 - `GET /health`: service status, package `version`, Sendspin listen port, and connected player count.

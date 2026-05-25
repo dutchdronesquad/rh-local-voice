@@ -224,8 +224,9 @@ Important measurement history:
 
 ## Still To Do
 
-- [ ] Decide whether Docker/cloud release automation belongs in this repo before the first public package release.
-- [x] Keep the local browser player in the RotorHazard plugin; defer service-owned player UI to Docker/cloud packaging.
+- [x] Add Docker/cloud release automation in this repo.
+- [x] Keep the local browser player in the RotorHazard plugin.
+- [x] Bundle the player UI into the Docker image for container/cloud deployments.
 
 ## Local Testing On Ubuntu VM
 
@@ -309,7 +310,8 @@ Actual workflows:
 
 ```text
 .github/workflows/release.yaml       — builds amd64 + arm64 .deb on release, uploads to GitHub Release
-.github/workflows/build.yaml         — builds amd64 .deb on PR when service files change
+.github/workflows/build.yaml         — builds amd64 .deb and Docker image on PR when service files change
+.github/workflows/release.yaml       — publishes multi-arch Docker image to GHCR on release
 .github/workflows/linting.yaml       — ruff, formatting, pre-commit style checks, and player build
 .github/workflows/release-version.yaml — validates plugin manifest version on release branches
 .github/actions/build-sendspin-deb/  — composite action shared by both workflows
@@ -319,11 +321,12 @@ Release output is split by responsibility:
 
 - `local_voice.zip`: RotorHazard plugin package, including the `/player` browser frontend.
 - `sendspin-service_<version>_<arch>.deb`: local headless Sendspin service package.
+- `ghcr.io/<owner>/sendspin-service:<version>`: Docker image for container/cloud deployments, including `/player`.
 
 Still needed:
 
 ```text
-.github/workflows/sendspin-docker.yml  — Docker image builds for cloud target
+Docker/cloud deployment hardening and auth/session docs
 ```
 
 Still missing from automated checks:
@@ -333,10 +336,10 @@ Still missing from automated checks:
 
 Docker workflow:
 
-- build `linux/amd64` image
-- build `linux/arm64` image
-- push to GHCR
-- tag images with release version and `latest`
+- build `linux/amd64` image on pull requests
+- build `linux/amd64` and `linux/arm64` image on published releases
+- push release images to GHCR
+- tag release images with release version and `latest` for non-prereleases
 
 Expected artifacts:
 
@@ -350,7 +353,17 @@ ghcr.io/<owner>/sendspin-service:0.1.0
 
 Docker is the primary deployment format for cloud Sendspin targets. The local Pi path stays `.deb` + systemd.
 
-Unlike the local `.deb`, the future Docker/cloud service may include a service-owned player frontend. That player should be designed for remote/QR use and should not force the local RotorHazard plugin to give up its operator-facing `/player` route.
+Unlike the local `.deb`, the Docker/cloud service includes a service-owned player frontend. That player is currently built from the existing Vite/Preact player and served by the container at `/player`; it should later evolve toward remote/QR use without forcing the local RotorHazard plugin to give up its operator-facing `/player` route.
+
+Current Docker image scope:
+
+- same `/health`, `/v1/play`, and `/v1/stop` API as the `.deb`
+- browser player served at `/player`
+- HTTP ingest bound to `0.0.0.0:8766` by default because container port publishing is explicit
+- Sendspin endpoint bound to `0.0.0.0:8927`
+- optional `SENDSPIN_API_TOKEN` bearer auth for `/v1/play` and `/v1/stop` when the ingest API is public
+- `compose.yaml` for local container testing and simple reverse-proxy deployments
+- no bundled RotorHazard plugin assets
 
 Example target shape:
 
@@ -361,12 +374,24 @@ docker run \
   ghcr.io/<owner>/sendspin-service:0.1.0
 ```
 
+Compose target shape:
+
+```shell
+docker compose up -d
+```
+
+Player URL:
+
+```text
+http://<container-host>:8766/player
+```
+
 Cloud deployment adds concerns that should not leak into the local package:
 
 - HTTPS termination
 - token auth
 - event/session identity
-- QR landing page/player join flow
+- QR/share player join flow
 - session cleanup/expiry
 - observability for remote playback issues
 
@@ -388,6 +413,14 @@ But keep deployment concerns separate:
 
 Goal: allow remote listeners to join with a QR code while local PA playback remains independent.
 
+Player frontend direction:
+
+- Keep the current Preact player until the Docker/cloud path is merged and stable.
+- After that, migrate the standalone player frontend to React + Tailwind + shadcn/Radix-style components.
+- Use shadcn/Radix for the share dialog/drawer and future player UI primitives instead of hand-rolling every interaction.
+- Accept the moderate bundle-size increase because the Docker/cloud player benefits more from polished accessibility, focus handling, and reusable UI components than from staying minimal at all costs.
+- Do the migration cleanly rather than forcing shadcn/Radix through Preact compatibility.
+
 Plugin checklist:
 
 - [ ] Add optional cloud output enable setting.
@@ -403,17 +436,20 @@ Cloud service checklist:
 - [ ] Add HTTPS deployment pattern.
 - [ ] Add auth/token handling.
 - [ ] Add event/session identity.
-- [ ] Add QR join page.
-- [ ] Add phone player flow.
+- [x] Add player share dialog/drawer with QR code.
+- [ ] Harden remote player/session flow.
 - [ ] Add cleanup/expiry rules for event sessions.
 
 Docker checklist:
 
-- [ ] Build `linux/amd64` image.
-- [ ] Build `linux/arm64` image.
-- [ ] Decide where the Docker/cloud player frontend lives and how it is built.
-- [ ] Push to GHCR.
-- [ ] Document cloud deployment example.
+- [x] Add Dockerfile.
+- [x] Add Docker jobs for PR build checks and release publishing.
+- [ ] Verify `linux/amd64` image build in CI.
+- [ ] Verify `linux/arm64` image build in CI.
+- [x] Build and serve the player frontend in the Docker image.
+- [x] Add Docker Compose file.
+- [ ] Push to GHCR on release.
+- [x] Document basic container deployment example.
 
 Acceptance:
 

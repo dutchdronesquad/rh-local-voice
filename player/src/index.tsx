@@ -1,8 +1,9 @@
 import { SendspinPlayer } from "@sendspin/sendspin-js";
 import type { CorrectionMode, GroupUpdatePayload, ServerStatePayload, StreamFormat } from "@sendspin/sendspin-js";
-import { ChevronRight, Play, Volume2, VolumeX } from "lucide-preact";
+import { ChevronRight, Play, Share2, Volume2, VolumeX, X } from "lucide-preact";
 import { render } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { qrMatrix } from "./qr";
 import "./style.css";
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "playing" | "reconnecting" | "error";
@@ -74,6 +75,7 @@ const RECONNECT_CONFIG = {
   maxDelayMs: 15000,
   maxAttempts: Infinity,
 };
+const SHARE_ANIMATION_MS = 180;
 
 function defaultBaseUrl(): string {
   const protocol = window.location.protocol === "https:" ? "https:" : "http:";
@@ -154,6 +156,14 @@ function bucket(value: number | null, size: number): number | null {
   return Math.round(value / size) * size;
 }
 
+function playerPageUrl(): string {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.pathname = url.pathname.replace(/\/player(?:\/.*)?$/i, "/player");
+  return url.toString();
+}
+
 function App() {
   const [baseUrl, setBaseUrl] = useState(() => window.localStorage.getItem(STORE_SERVER_URL) || defaultBaseUrl());
   const [volume, setVolume] = useState(initialVolume);
@@ -161,6 +171,8 @@ function App() {
   const [correctionMode, setCorrectionMode] = useState<CorrectionMode>(initialCorrectionMode);
   const [serverOpen, setServerOpen] = useState(true);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareClosing, setShareClosing] = useState(false);
   const [state, setState] = useState<ConnectionState>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -182,6 +194,7 @@ function App() {
   const logIdRef = useRef(0);
   const hasConnectedRef = useRef(false);
   const lastPlayingRef = useRef(false);
+  const shareCloseTimerRef = useRef<number | null>(null);
   const detailLogRef = useRef<DetailLogState>({
     correctionMethod: "none",
     formatKey: null,
@@ -192,6 +205,7 @@ function App() {
     trackLabel: null,
   });
   const playerId = useMemo(getOrCreatePlayerId, []);
+  const shareUrl = useMemo(playerPageUrl, []);
 
   function addLog(message: string, kind: LogEntry["kind"] = "info") {
     setLogs((current) => [
@@ -210,6 +224,25 @@ function App() {
       timeSynced: false,
       trackLabel: null,
     };
+  }
+
+  function openShare() {
+    if (shareCloseTimerRef.current !== null) {
+      window.clearTimeout(shareCloseTimerRef.current);
+      shareCloseTimerRef.current = null;
+    }
+    setShareClosing(false);
+    setShareOpen(true);
+  }
+
+  function closeShare() {
+    setShareClosing(true);
+    if (shareCloseTimerRef.current !== null) window.clearTimeout(shareCloseTimerRef.current);
+    shareCloseTimerRef.current = window.setTimeout(() => {
+      setShareOpen(false);
+      setShareClosing(false);
+      shareCloseTimerRef.current = null;
+    }, SHARE_ANIMATION_MS);
   }
 
   function readSnapshot(player: SendspinPlayer): PlayerSnapshot {
@@ -433,6 +466,10 @@ function App() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
+  useEffect(() => () => {
+    if (shareCloseTimerRef.current !== null) window.clearTimeout(shareCloseTimerRef.current);
+  }, []);
+
   const connected = state === "connected" || state === "playing" || state === "connecting" || state === "reconnecting";
 
   const statusText = state === "playing"
@@ -460,16 +497,27 @@ function App() {
             <Play fill="currentColor" strokeWidth={0} />
           </div>
           <div class="header-text">
-            <h1>Local Voice Player</h1>
-            <p>RotorHazard</p>
+            <h1>Sendspin Player</h1>
+            <p>Live audio</p>
           </div>
-          <button
-            class={`connection-button header-connection ${connected ? "connected" : ""}`}
-            type="button"
-            onClick={connected ? disconnect : connect}
-          >
-            {connected ? "Disconnect" : "Connect"}
-          </button>
+          <div class="header-actions">
+            <button
+              class="icon-button"
+              type="button"
+              aria-label="Share browser player"
+              title="Share browser player"
+              onClick={openShare}
+            >
+              <Share2 aria-hidden="true" />
+            </button>
+            <button
+              class={`connection-button header-connection ${connected ? "connected" : ""}`}
+              type="button"
+              onClick={connected ? disconnect : connect}
+            >
+              {connected ? "Disconnect" : "Connect"}
+            </button>
+          </div>
         </header>
 
         <section class="status-hero" aria-live="polite">
@@ -597,6 +645,30 @@ function App() {
           </a>
         </footer>
       </section>
+
+      {shareOpen && (
+        <div class={`share-backdrop ${shareClosing ? "closing" : ""}`} role="presentation" onClick={closeShare}>
+          <section
+            class="share-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header class="share-header">
+              <h2 id="share-title">Share browser player</h2>
+              <button class="icon-button" type="button" aria-label="Close share dialog" onClick={closeShare}>
+                <X aria-hidden="true" />
+              </button>
+            </header>
+            <p class="share-copy">
+              Scan this code on another device to open this Sendspin player and join the same audio session there.
+            </p>
+            <QrCodeSvg text={shareUrl} />
+            <p class="share-url">{shareUrl}</p>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -608,6 +680,30 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function QrCodeSvg({ text }: { text: string }) {
+  try {
+    const matrix = qrMatrix(text);
+    const size = matrix.length;
+    const padding = 4;
+    return (
+      <svg
+        class="qr-code"
+        viewBox={`0 0 ${size + padding * 2} ${size + padding * 2}`}
+        role="img"
+        aria-label="QR code for this player"
+      >
+        <rect width={size + padding * 2} height={size + padding * 2} fill="white" />
+        {matrix.map((row, y) => row.map((filled, x) => filled && (
+          <rect key={`${x}-${y}`} x={x + padding} y={y + padding} width="1" height="1" fill="black" />
+        )))}
+      </svg>
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Cannot render QR code";
+    return <p class="qr-error">{message}</p>;
+  }
 }
 
 const root = document.getElementById("app");

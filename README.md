@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-    <img alt="Local Voice" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/custom_plugins/local_voice/player/favicon.svg" width="96">
+    <img alt="Local Voice" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/player/public/favicon.svg" width="96">
   </picture>
 </p>
 
@@ -50,7 +50,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 
 - 🎙️ **Local TTS**: Generates voice callouts with [Piper TTS] entirely on-device.
 - 📡 **Sendspin service playback**: Sends generated WAV files to a local service that streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
-- 🌐 **Browser player**: A built-in web player accessible at `/player`.
+- 🌐 **Browser player**: A built-in RotorHazard plugin player at `/player` that connects to the Sendspin service.
 - 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
 - ⚡ **Smart caching**: Reusable pilot-name and lap-number segments are cached separately; use **Rebuild pre-cache** after startup or voice model/settings changes to prepare them ahead of racing.
 
@@ -59,8 +59,8 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 - [RotorHazard] with RHAPI plugin support.
 - Python 3.12 or newer.
 - `sendspin-service` installed on the RotorHazard host or another reachable machine.
-- Network access from playback clients to the RotorHazard server.
-- A browser on the playback device. The plugin serves its own Sendspin player at `/player`.
+- Network access from playback clients to `sendspin-service`.
+- A browser on the playback device. RotorHazard serves the Sendspin player at `<RotorHazard UI base URL>/player`.
 
 ## Quick Start
 
@@ -70,7 +70,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 4. Download the matching `sendspin-service_*.deb` from the same GitHub release and install it on the RotorHazard host.
 5. Open the RotorHazard settings page and enable **Local Voice**.
 6. Confirm **Sendspin service URL** points to the service, normally `http://127.0.0.1:8766`.
-7. Open `/player` from the RotorHazard host on the playback device.
+7. Open `<RotorHazard UI base URL>/player` from the playback device.
 8. Use **Rebuild pre-cache** to prepare schedule, pilot-name, and lap-number WAV files.
 9. Use **Generate test phrase** or **Play audio check** to verify playback.
 

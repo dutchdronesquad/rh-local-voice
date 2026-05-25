@@ -10,10 +10,9 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
+
+from aiohttp import web
 
 from .audio_queue import DEFAULT_EXPIRY_SEC, AudioQueue, Priority, WavItem
 from .sendspin import SendSpinServer
@@ -115,83 +114,61 @@ class SendspinService:
         self._sendspin.close()
 
 
-class _RequestHandler(BaseHTTPRequestHandler):
-    """HTTP request handler bound to a SendspinService instance."""
-
-    server: _ServiceHTTPServer
-
-    def do_GET(self) -> None:
-        """Handle GET requests."""
-        if self._path == "/health":
-            self._write_json(HTTPStatus.OK, self.server.service.health())
-            return
-        self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
-
-    def do_POST(self) -> None:
-        """Handle POST requests."""
-        try:
-            if self._path == "/v1/play":
-                payload = self._read_json()
-                self._write_json(HTTPStatus.ACCEPTED, self.server.service.play(payload))
-                return
-            if self._path == "/v1/stop":
-                self._write_json(HTTPStatus.OK, self.server.service.stop())
-                return
-            self._write_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
-        except (TypeError, ValueError) as exc:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
-        except Exception:
-            logger.exception("Sendspin service request failed: %s", self._path)
-            self._write_json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": "internal server error"},
-            )
-
-    def log_message(self, format_: str, *args: object) -> None:
-        """Route HTTP server logs through logging."""
-        logger.info("%s - %s", self.address_string(), format_ % args)
-
-    @property
-    def _path(self) -> str:
-        return urlparse(self.path).path
-
-    def _read_json(self) -> dict[str, Any]:
-        try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError as exc:
-            raise ValueError("invalid Content-Length header") from exc
-        if content_length <= 0:
-            return {}
-        if content_length > self.server.service.max_body_bytes:
-            raise ValueError("request body too large")
-        data = self.rfile.read(content_length)
-        try:
-            payload = json.loads(data.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ValueError("invalid JSON body") from exc
-        if not isinstance(payload, dict):
-            raise TypeError("JSON body must be an object")
-        return payload
-
-    def _write_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
-        data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+def _create_app(service: SendspinService) -> web.Application:
+    """Create the HTTP ingest application."""
+    app = web.Application(client_max_size=service.max_body_bytes)
+    app["service"] = service
+    app.router.add_get("/health", _health)
+    app.router.add_post("/v1/play", _play)
+    app.router.add_post("/v1/stop", _stop)
+    return app
 
 
-class _ServiceHTTPServer(ThreadingHTTPServer):
-    """HTTP server carrying a SendspinService reference."""
+async def _health(request: web.Request) -> web.Response:
+    """Return service health metadata."""
+    return web.json_response(_service(request).health())
 
-    daemon_threads = True
 
-    def __init__(
-        self, server_address: tuple[str, int], service: SendspinService
-    ) -> None:
-        super().__init__(server_address, _RequestHandler)
-        self.service = service
+async def _play(request: web.Request) -> web.Response:
+    """Queue playback from a JSON request body."""
+    try:
+        payload = await _read_json(request)
+        return web.json_response(_service(request).play(payload), status=202)
+    except web.HTTPRequestEntityTooLarge:
+        return web.json_response({"error": "request body too large"}, status=413)
+    except (TypeError, ValueError) as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    except Exception:
+        logger.exception("Sendspin service request failed: %s", request.path)
+        return web.json_response({"error": "internal server error"}, status=500)
+
+
+async def _stop(request: web.Request) -> web.Response:
+    """Stop active playback and clear queued audio."""
+    try:
+        return web.json_response(_service(request).stop())
+    except Exception:
+        logger.exception("Sendspin service stop request failed")
+        return web.json_response({"error": "internal server error"}, status=500)
+
+
+async def _read_json(request: web.Request) -> dict[str, Any]:
+    content_length = request.content_length
+    if content_length == 0:
+        return {}
+    if content_length is not None and content_length > _service(request).max_body_bytes:
+        raise ValueError("request body too large")
+    try:
+        payload = await request.json(loads=json.loads)
+    except json.JSONDecodeError as exc:
+        raise ValueError("invalid JSON body") from exc
+    if not isinstance(payload, dict):
+        raise TypeError("JSON body must be an object")
+    return payload
+
+
+def _service(request: web.Request) -> SendspinService:
+    return request.app["service"]
 
 
 def _wav_items(payload: dict[str, Any]) -> list[WavItem]:
@@ -349,17 +326,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     service = SendspinService(config)
     try:
         service.start()
-        server = _ServiceHTTPServer((config.api_host, config.api_port), service)
+        app = _create_app(service)
     except RuntimeError:
         logger.exception("Sendspin service startup failed")
-        service.shutdown()
-        return 1
-    except OSError:
-        logger.exception(
-            "Sendspin service cannot listen on http://%s:%s",
-            config.api_host,
-            config.api_port,
-        )
         service.shutdown()
         return 1
     logger.info(
@@ -368,10 +337,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         config.api_port,
     )
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        logger.info("Sendspin service stopping")
+        web.run_app(
+            app,
+            host=config.api_host,
+            port=config.api_port,
+            print=None,
+            access_log=logger,
+        )
+    except OSError:
+        logger.exception(
+            "Sendspin service cannot listen on http://%s:%s",
+            config.api_host,
+            config.api_port,
+        )
+        return 1
     finally:
         service.shutdown()
-        server.server_close()
     return 0

@@ -1,8 +1,8 @@
-"""Constants for the Local Voice RotorHazard plugin."""
+"""Constants for the Race Voice RotorHazard plugin."""
 
-PANEL_ID = "local_voice"
-CONFIG_SECTION = "LOCAL_VOICE"
-PLUGIN_PREFIX = "local_voice"
+PANEL_ID = "race_voice"
+CONFIG_SECTION = "RACE_VOICE"
+PLUGIN_PREFIX = "race_voice"
 
 ENABLE_OPTION = f"{PLUGIN_PREFIX}_enabled"
 VOICE_MODEL_OPTION = f"{PLUGIN_PREFIX}_voice_model"

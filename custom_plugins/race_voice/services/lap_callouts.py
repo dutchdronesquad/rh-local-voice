@@ -1,4 +1,4 @@
-"""Lap callout segment planning for Local Voice."""
+"""Lap callout segment planning for Race Voice."""
 
 from __future__ import annotations
 

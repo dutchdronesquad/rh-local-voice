@@ -1,6 +1,6 @@
 # Changelog
 
-All notable shipped changes to Local Voice should be documented in this file.
+All notable shipped changes to Race Voice should be documented in this file.
 
 This changelog is intentionally concise. GitHub Releases can carry the fuller change list and release assets.
 
@@ -8,7 +8,7 @@ This changelog is intentionally concise. GitHub Releases can carry the fuller ch
 
 ### Scheduled race callouts
 
-Local Voice now listens to RotorHazard race schedule events and can announce countdowns before a deferred race start. The default countdown phrases cover 60, 30, 10, and 5 seconds before the scheduled start, and pending countdowns are cancelled when the schedule is replaced or cancelled.
+Race Voice now listens to RotorHazard race schedule events and can announce countdowns before a deferred race start. The default countdown phrases cover 60, 30, 10, and 5 seconds before the scheduled start, and pending countdowns are cancelled when the schedule is replaced or cancelled.
 
 Countdown phrases are localized alongside lap callouts for the supported voice-model languages:
 
@@ -39,7 +39,7 @@ Playback buffering has also been tightened:
 
 ### Local voice generation
 
-Local Voice can now generate RotorHazard callouts on the timing server with Piper TTS, without relying on browser speech or cloud services. Voice models are downloaded on first use, cached locally, and configured from the RotorHazard settings panel.
+Race Voice can now generate RotorHazard callouts on the timing server with Piper TTS, without relying on browser speech or cloud services. Voice models are downloaded on first use, cached locally, and configured from the RotorHazard settings panel.
 
 For race operators, the main benefits are:
 
@@ -61,4 +61,4 @@ The audio queue also tracks priorities and expiry times so stale lap callouts ca
 
 The settings panel includes quick actions for generating a test phrase, playing an audio check clip, stopping current playback, and clearing the selected voice model's TTS cache.
 
-This release requires Python 3.12 or newer. The selected Piper model needs internet access once for the initial download, and regular RotorHazard browser clients should have Voice Volume set to `0` when Local Voice is handling callouts.
+This release requires Python 3.12 or newer. The selected Piper model needs internet access once for the initial download, and regular RotorHazard browser clients should have Voice Volume set to `0` when Race Voice is handling callouts.

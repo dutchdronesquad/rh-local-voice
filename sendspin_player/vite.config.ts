@@ -16,7 +16,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: fromConfig("../custom_plugins/local_voice/player"),
+    outDir: fromConfig("../custom_plugins/race_voice/player"),
     emptyOutDir: true,
     sourcemap: true,
     rollupOptions: {

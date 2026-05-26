@@ -5,7 +5,7 @@ maintainer: Dutch Drone Squad <info@dutchdronesquad.nl>
 description: |
   Standalone Sendspin playback service with a local HTTP ingest API.
   The service owns the Sendspin player endpoint and can be used by
-  local voice plugins or other producers that submit WAV playback jobs.
+  race voice plugins or other producers that submit WAV playback jobs.
 section: sound
 priority: optional
 depends:

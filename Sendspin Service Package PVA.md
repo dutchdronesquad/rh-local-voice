@@ -2,7 +2,7 @@
 
 ## Problem
 
-Local Voice needs reliable Sendspin playback without making RotorHazard own the Sendspin server process.
+Race Voice needs reliable Sendspin playback without making RotorHazard own the Sendspin server process.
 
 The mixed model caused avoidable complexity:
 
@@ -19,7 +19,7 @@ For a Raspberry Pi race setup, the service should be installed once, managed by 
 Local Sendspin playback should be service-owned, not RotorHazard-plugin-owned.
 
 ```text
-Local Voice plugin
+Race Voice plugin
   -> generates/caches WAV files
   -> POSTs inline WAV payloads to http://127.0.0.1:8766
 
@@ -53,13 +53,13 @@ If the service is stopped or missing, the plugin should log a direct message tha
 
 ## Current State
 
-- Plugin output uses `SendspinServiceClient` in `custom_plugins/local_voice/output.py`.
+- Plugin output uses `SendspinServiceClient` in `custom_plugins/race_voice/output.py`.
 - The service API accepts `wav_files` inline base64 payloads. `wav_paths` is not part of the supported API.
 - The packaged service runs with `DynamicUser=yes`, so it does not need read access to RotorHazard/plugin cache directories.
 - Service packaging uses a uv-built bundled CPython runtime and `nfpm`.
 - The service package dependency set is separate from the plugin dependency set.
 - `av`, `numpy`, and `pillow` are currently required by the `aiosendspin` runtime path.
-- The old plugin-side `custom_plugins/local_voice/sendspin.py` has been removed.
+- The old plugin-side `custom_plugins/race_voice/sendspin.py` has been removed.
 - The local browser player remains part of the RotorHazard plugin and is served at `/player`.
 - The local `.deb` package is intentionally headless: it exposes the HTTP ingest API and Sendspin WebSocket endpoint, but does not serve a player UI.
 
@@ -214,7 +214,7 @@ Important measurement history:
 - [x] Confirm `wav_paths` is not part of the supported service API.
 - [x] Add GitHub Actions workflow for service package builds.
 - [x] Publish both `amd64` and `arm64` package artifacts on release.
-- [x] Remove old plugin-side `custom_plugins/local_voice/sendspin.py`.
+- [x] Remove old plugin-side `custom_plugins/race_voice/sendspin.py`.
 - [x] Keep `/health` available for service/package diagnostics.
 - [ ] Decide whether the plugin should surface service health as status text instead of a separate quick button.
 - [x] Add release checksums for service package assets.
@@ -284,7 +284,7 @@ Pi install checklist:
 - [ ] Confirm systemd service auto-starts.
 - [ ] Confirm `/health` works.
 - [ ] Confirm browser player can connect on port `8927`.
-- [ ] Confirm Local Voice plugin can POST to `127.0.0.1:8766`.
+- [ ] Confirm Race Voice plugin can POST to `127.0.0.1:8766`.
 - [ ] Confirm **Play audio check** works.
 - [ ] Confirm race callouts work under normal event load.
 - [ ] Confirm memory/startup behavior is acceptable on the Pi.
@@ -319,14 +319,14 @@ Actual workflows:
 
 Release output is split by responsibility:
 
-- `local_voice.zip`: RotorHazard plugin package, including the `/player` browser frontend.
+- `race_voice.zip`: RotorHazard plugin package, including the `/player` browser frontend.
 - `sendspin-service_<version>_<arch>.deb`: local headless Sendspin service package.
-- `ghcr.io/<owner>/sendspin-service:<version>`: Docker image for container/cloud deployments, including `/player`.
+- `ghcr.io/<owner>/sendspin-service:<version>`: Docker image for container/cloud deployments, including the standalone player at `/`.
 
 Still needed:
 
 ```text
-Docker/cloud deployment hardening and auth/session docs
+Docker/cloud deployment validation on a public reverse proxy
 ```
 
 Still missing from automated checks:
@@ -354,9 +354,9 @@ ghcr.io/<owner>/sendspin-service:0.1.0
 Docker is the primary deployment format for cloud Sendspin targets. The local Pi path stays `.deb` + systemd.
 
 Unlike the local `.deb`, the Docker/cloud service includes a service-owned
-player frontend served by the container at `/player`. It should evolve toward
-remote/QR use without forcing the local RotorHazard plugin to give up its
-operator-facing `/player` route.
+player frontend served by the container at `/`. It should evolve toward
+remote/QR use while the local RotorHazard plugin keeps its operator-facing
+`/player` route.
 
 Current frontend direction: the standalone player source lives in the root-level
 `sendspin_player/` Vite/React/shadcn app. Docker, CI/release workflows, and
@@ -366,7 +366,7 @@ directory has been removed in the player migration.
 Current Docker image scope:
 
 - same `/health`, `/v1/play`, and `/v1/stop` API as the `.deb`
-- browser player served at `/player`
+- browser player served at `/`
 - HTTP ingest bound to `0.0.0.0:8766` by default because container port publishing is explicit
 - Sendspin endpoint bound to `0.0.0.0:8927`
 - optional `SENDSPIN_API_TOKEN` bearer auth for `/v1/play` and `/v1/stop` when the ingest API is public
@@ -391,7 +391,7 @@ docker compose up -d
 Player URL:
 
 ```text
-http://<container-host>:8766/player
+http://<container-host>:8766/
 ```
 
 Cloud deployment adds concerns that should not leak into the local package:

@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to Local Voice!
+Thank you for your interest in contributing to Race Voice!
 
 ## Requirements
 
@@ -71,10 +71,11 @@ The Sendspin browser player source lives in `sendspin_player/` and is built with
 cd sendspin_player
 npm run dev      # local dev server
 npm run lint     # lint
-npm run build    # production build → custom_plugins/local_voice/player/
+npm run build    # standalone production build at /
+npm run build:plugin # RotorHazard plugin production build at /player/
 ```
 
-`npm run build` runs the TypeScript build and writes the production build to `custom_plugins/local_voice/player/`. The `assets/` subdirectory is not committed to git and must be built locally before deploying.
+Both build commands run the TypeScript build and write production output to `custom_plugins/race_voice/player/`. Use `npm run build:plugin` before packaging the RotorHazard plugin. The `assets/` subdirectory is not committed to git and must be built locally before deploying.
 
 > **Browser compatibility note**: During local testing, Safari on macOS gave the smoothest playback experience. Chrome on macOS occasionally showed small playback interruptions and more sync-error movement, particularly with browser extensions active. When testing sync quality in Chrome, use an incognito window with extensions disabled before treating jitter as a server-side issue.
 

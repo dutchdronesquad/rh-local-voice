@@ -1,4 +1,4 @@
-"""UI panel, options, and quick-buttons registration for Local Voice."""
+"""UI panel, options, and quick-buttons registration for Race Voice."""
 
 from __future__ import annotations
 
@@ -39,18 +39,17 @@ def register_ui(  # noqa: PLR0913
     clear_cache_callback: Any,
     rebuild_precache_callback: Any,
 ) -> None:
-    """Register the Local Voice settings panel, options, and quick buttons."""
+    """Register the Race Voice settings panel, options, and quick buttons."""
     _register_player_blueprint(rhapi)
-    rhapi.ui.register_panel(PANEL_ID, "Local Voice", "run", open=False)
+    rhapi.ui.register_panel(PANEL_ID, "Race Voice", "run", open=False)
 
-    # Main enable
     rhapi.fields.register_option(
         UIField(
             ENABLE_OPTION,
             "Enable plugin audio",
             UIFieldType.CHECKBOX,
             value=False,
-            desc="Generate server-side local voice callout WAV files.",
+            desc="Generate server-side race voice callout WAV files.",
         ),
         panel=PANEL_ID,
     )
@@ -75,7 +74,6 @@ def register_ui(  # noqa: PLR0913
         ),
         panel=PANEL_ID,
     )
-    # Voice model + speed
     rhapi.fields.register_option(
         UIField(
             VOICE_MODEL_OPTION,
@@ -127,7 +125,7 @@ def register_ui(  # noqa: PLR0913
     # Panel notes
     rhapi.ui.register_markdown(
         PANEL_ID,
-        "local_voice_notes",
+        "race_voice_notes",
         '<a href="/player" target="_blank" rel="noopener noreferrer">'
         "Open browser player in a new tab</a>\n\n"
         "⚠ Set Voice Volume to 0 on all browser clients.\n\n"
@@ -149,31 +147,31 @@ def register_ui(  # noqa: PLR0913
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_test_phrase",
+        name="race_voice_test_phrase",
         label="Generate test phrase",
         function=test_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_audio_check",
+        name="race_voice_audio_check",
         label="Play audio check",
         function=audio_check_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_stop_audio",
+        name="race_voice_stop_audio",
         label="Stop audio",
         function=stop_audio_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_clear_cache",
+        name="race_voice_clear_cache",
         label="Clear TTS cache",
         function=clear_cache_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_rebuild_precache",
+        name="race_voice_rebuild_precache",
         label="Rebuild pre-cache",
         function=rebuild_precache_callback,
     )
@@ -181,7 +179,7 @@ def register_ui(  # noqa: PLR0913
 
 def _register_player_blueprint(rhapi: Any) -> None:
     """Serve the Sendspin browser player at /player."""
-    bp = Blueprint("local_voice_player", __name__)
+    bp = Blueprint("race_voice_player", __name__)
 
     @bp.route("/player")
     def player_page() -> Any:

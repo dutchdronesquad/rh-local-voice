@@ -25,4 +25,4 @@ jobs:
         run: >-
           python3 -m tools.check_release_version
           --branch "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          --manifest custom_plugins/local_voice/manifest.json
+          --manifest custom_plugins/race_voice/manifest.json

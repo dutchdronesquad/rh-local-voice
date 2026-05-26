@@ -20,7 +20,7 @@ ARG SERVICE_VERSION=0.0.0+dev
 
 LABEL org.opencontainers.image.title="Sendspin Service"
 LABEL org.opencontainers.image.description="Standalone Sendspin playback service with HTTP ingest API"
-LABEL org.opencontainers.image.source="https://github.com/dutchdronesquad/rh-local-voice"
+LABEL org.opencontainers.image.source="https://github.com/dutchdronesquad/rh-race-voice"
 LABEL org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONUNBUFFERED=1
@@ -54,7 +54,7 @@ RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     && rm /tmp/sendspin-service-requirements.txt
 
 COPY sendspin_service ./sendspin_service
-COPY --from=player-build /build/custom_plugins/local_voice/player ./player
+COPY --from=player-build /build/custom_plugins/race_voice/player ./player
 
 RUN adduser -D -H -u 10001 -s /sbin/nologin sendspin
 

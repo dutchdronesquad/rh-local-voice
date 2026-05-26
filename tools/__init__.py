@@ -1,1 +1,1 @@
-"""Maintainer tooling for the Local Voice repository."""
+"""Maintainer tooling for the Race Voice repository."""

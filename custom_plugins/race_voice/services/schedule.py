@@ -73,5 +73,5 @@ class ScheduleCalloutManager:
         with self._lock:
             if generation != self._generation:
                 return
-        logger.debug("Local Voice firing schedule callout: %s", phrase)
+        logger.debug("Race Voice firing schedule callout: %s", phrase)
         self._enqueue_callout(phrase, settings)

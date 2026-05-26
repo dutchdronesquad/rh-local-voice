@@ -1,0 +1,149 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+@theme inline {
+  --font-sans: "Geist Variable", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-stroke-muted: var(--stroke-muted);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --animate-playback-pulse: playback-pulse 1.65s ease-out infinite;
+  --animate-playing-bar: playing-bar 0.72s ease-in-out infinite;
+  --animate-blob-a: blob-a 9s ease-in-out infinite alternate;
+  --animate-blob-b: blob-b 11s ease-in-out infinite alternate;
+  --animate-blob-c: blob-c 13s ease-in-out infinite alternate;
+}
+
+:root {
+  --background: #eef2f7;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #315cf6;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f6fb;
+  --secondary-foreground: #0f172a;
+  --muted: #f3f6fb;
+  --muted-foreground: #475569;
+  --accent: #f3f6fb;
+  --accent-foreground: #0f172a;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #cbd5e1;
+  --input: #cbd5e1;
+  --ring: #315cf6;
+  --radius: 0.5rem;
+  --success: #15803d;
+  --warning: #b45309;
+  --stroke-muted: #94a3b8;
+  --blue-dim: #dce6ff;
+  --shadow: 0 24px 70px rgb(15 23 42 / 0.18);
+  --backdrop-grid: rgb(100 116 139 / 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #080b13;
+    --foreground: #eef2f7;
+    --card: #151823;
+    --card-foreground: #eef2f7;
+    --popover: #151823;
+    --popover-foreground: #eef2f7;
+    --primary: #6d8cff;
+    --primary-foreground: #0f172a;
+    --secondary: #1f2330;
+    --secondary-foreground: #eef2f7;
+    --muted: #1f2330;
+    --muted-foreground: #9aa6b8;
+    --accent: #1f2330;
+    --accent-foreground: #eef2f7;
+    --destructive: #f87171;
+    --destructive-foreground: #0f172a;
+    --border: #303545;
+    --input: #303545;
+    --ring: #6d8cff;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --stroke-muted: #4b5567;
+    --blue-dim: #26346d;
+    --shadow: 0 24px 70px rgb(0 0 0 / 0.35);
+    --backdrop-grid: rgb(148 163 184 / 0.13);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    min-height: 100%;
+  }
+  body {
+    @apply text-foreground font-sans;
+    min-height: 100dvh;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    background-color: var(--background);
+    background-image:
+      radial-gradient(ellipse 100% 65% at 10% 5%,  color-mix(in srgb, var(--primary) 14%, transparent) 0%, transparent 60%),
+      radial-gradient(ellipse 80%  55% at 90% 95%, color-mix(in srgb, var(--success) 11%, transparent) 0%, transparent 60%),
+      radial-gradient(ellipse 55%  35% at 88% 8%,  color-mix(in srgb, var(--primary) 6%,  transparent) 0%, transparent 50%);
+  }
+}
+
+/* Keyframes — cannot be expressed as Tailwind utilities */
+
+@keyframes blob-a {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(5vw, 5vw) scale(1.1); }
+}
+@keyframes blob-b {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-4vw, -4vw) scale(0.92); }
+}
+@keyframes blob-c {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(-4vw, 6vw); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes playback-pulse {
+  0%   { opacity: 0.9; transform: scale(0.72); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+@keyframes playing-bar {
+  0%, 100% { height: 7px; opacity: 0.55; }
+  50%       { height: 24px; opacity: 1; }
+}

@@ -1,6 +1,6 @@
 <p align="center">
   <picture>
-    <img alt="Local Voice" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/player/public/favicon.svg" width="96">
+    <img alt="Local Voice" src="https://raw.githubusercontent.com/dutchdronesquad/rh-local-voice/develop/sendspin_player/public/favicon.svg" width="96">
   </picture>
 </p>
 

@@ -21,13 +21,13 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-          cache-dependency-path: player/package-lock.json
+          cache-dependency-path: sendspin_player/package-lock.json
       - name: 🏗 Install player dependencies
         run: npm ci
-        working-directory: player
+        working-directory: sendspin_player
       - name: 🚀 Build player
         run: npm run build
-        working-directory: player
+        working-directory: sendspin_player
       - name: 📦 Package plugin
         run: zip -r local_voice.zip custom_plugins
       - name: ⬆️ Upload release asset

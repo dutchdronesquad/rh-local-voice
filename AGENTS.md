@@ -16,7 +16,7 @@ Important modules:
   - `services/lap_callouts.py`: lap callout segment planning and reusable segment lists for pre-cache.
   - `services/precache.py`: manual pre-cache rebuild orchestration, stale-job cancellation, cleanup, and completion notifications.
   - `services/schedule.py`: scheduled-race countdown timers.
-- `player/`: Vite/Preact source for the browser player; production output is written to `custom_plugins/local_voice/player/`.
+- `sendspin_player/`: Vite/React/shadcn source for the browser player; production output is written to `custom_plugins/local_voice/player/`.
 
 ## Runtime Behavior
 
@@ -76,19 +76,31 @@ Useful checks:
 - `uv run ruff format --check .`
 - `uv run prek run --all-files`
 
-The browser player source lives in `player/`:
+The browser player source lives in `sendspin_player/`:
 
-- `npm run check`
 - `npm run lint`
 - `npm run build`
 
-`npm run build` writes production files into `custom_plugins/local_voice/player/`. The release workflow builds the player and zips `custom_plugins` as `local_voice.zip`.
+`npm run build` runs the TypeScript build and writes production files into `custom_plugins/local_voice/player/`. The release workflow builds the player and zips `custom_plugins` as `local_voice.zip`.
 
 ## Documentation Style
 
 The README should stay selective: keep it focused on what Local Voice is, what it needs, and how to get started. Move day-to-day operation, settings, cache behavior, and troubleshooting details into files under `docs/`.
 
 Keep user-facing docs aligned with actual race behavior, especially cache cleanup, browser playback, Sendspin port `8927`, and the need to set RotorHazard browser Voice Volume to `0` when Local Voice handles callouts.
+
+## PR Style
+
+Write PR descriptions as a short explanation of the change, not as a raw change
+log. Start with one or two paragraphs that explain the problem, the chosen
+direction, and the user-visible result. Use bullet lists only for the parts that
+are easier to scan as lists, such as notable implementation details, follow-up
+work, or validation steps.
+
+Avoid PR bodies made entirely of bullet lists. Do not enumerate every touched
+file or internal refactor unless it changes behavior, deployment, packaging, or
+the operator workflow. The reader should understand why the branch exists before
+they see the checklist.
 
 ## Changelog Style
 

@@ -6,15 +6,15 @@ FROM ghcr.io/astral-sh/uv:0.11.16 AS uv
 
 FROM node:24-bookworm-slim AS player-build
 
-WORKDIR /build/player
+WORKDIR /build/sendspin_player
 
-COPY player/package.json player/package-lock.json ./
+COPY sendspin_player/package.json sendspin_player/package-lock.json ./
 RUN npm ci
 
-COPY player/ ./
+COPY sendspin_player/ ./
 RUN npm run build
 
-FROM python:${PYTHON_VERSION}-slim-bookworm
+FROM python:${PYTHON_VERSION}-alpine
 
 ARG SERVICE_VERSION=0.0.0+dev
 
@@ -37,7 +37,6 @@ ENV SENDSPIN_API_TOKEN=
 
 WORKDIR /opt/sendspin-service
 
-COPY --from=uv /uv /uvx /usr/local/bin/
 COPY pyproject.toml uv.lock ./
 
 RUN python3 - <<'PY' > /tmp/sendspin-service-requirements.txt
@@ -47,14 +46,17 @@ for dep in tomllib.loads(Path("pyproject.toml").read_text())["project"]["optiona
     print(dep)
 PY
 
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN apk add --no-cache libstdc++
+
+RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
+    --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system --requirements /tmp/sendspin-service-requirements.txt \
     && rm /tmp/sendspin-service-requirements.txt
 
 COPY sendspin_service ./sendspin_service
 COPY --from=player-build /build/custom_plugins/local_voice/player ./player
 
-RUN useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin sendspin
+RUN adduser -D -H -u 10001 -s /sbin/nologin sendspin
 
 USER sendspin
 

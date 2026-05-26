@@ -2,7 +2,7 @@
 
 ## Project Context
 
-Local Voice is a RotorHazard RHAPI plugin that generates voice callouts server-side with Piper TTS and streams the resulting WAV audio to Sendspin clients. The primary plugin package lives in `custom_plugins/local_voice/`.
+Race Voice is a RotorHazard RHAPI plugin that generates voice callouts server-side with Piper TTS and streams the resulting WAV audio to Sendspin clients. The primary plugin package lives in `custom_plugins/local_voice/`.
 
 Important modules:
 
@@ -80,14 +80,15 @@ The browser player source lives in `sendspin_player/`:
 
 - `npm run lint`
 - `npm run build`
+- `npm run build:plugin`
 
-`npm run build` runs the TypeScript build and writes production files into `custom_plugins/local_voice/player/`. The release workflow builds the player and zips `custom_plugins` as `local_voice.zip`.
+`npm run build` builds the standalone player for `/`. `npm run build:plugin` builds the RotorHazard plugin player for `/player/`. Both write production files into `custom_plugins/local_voice/player/`. The release workflow uses the plugin build and zips `custom_plugins` as `race_voice.zip`.
 
 ## Documentation Style
 
-The README should stay selective: keep it focused on what Local Voice is, what it needs, and how to get started. Move day-to-day operation, settings, cache behavior, and troubleshooting details into files under `docs/`.
+The README should stay selective: keep it focused on what Race Voice is, what it needs, and how to get started. Move day-to-day operation, settings, cache behavior, and troubleshooting details into files under `docs/`.
 
-Keep user-facing docs aligned with actual race behavior, especially cache cleanup, browser playback, Sendspin port `8927`, and the need to set RotorHazard browser Voice Volume to `0` when Local Voice handles callouts.
+Keep user-facing docs aligned with actual race behavior, especially cache cleanup, browser playback, Sendspin port `8927`, and the need to set RotorHazard browser Voice Volume to `0` when Race Voice handles callouts.
 
 ## PR Style
 

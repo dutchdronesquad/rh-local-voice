@@ -1,4 +1,4 @@
-"""RotorHazard integration for the Local Voice plugin."""
+"""RotorHazard integration for the Race Voice plugin."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ try:
     with (Path(__file__).parent / "locales.json").open(encoding="utf-8") as _f:
         _LOCALES: dict[str, dict] = json.load(_f)
 except (OSError, json.JSONDecodeError) as exc:
-    raise RuntimeError("Local Voice: failed to load locales.json") from exc
+    raise RuntimeError("Race Voice: failed to load locales.json") from exc
 
 
 @dataclass(frozen=True)
@@ -67,8 +67,8 @@ class VoiceSettings:
     params: SynthesisParams
 
 
-class LocalVoicePlugin:
-    """RotorHazard plugin for local Piper TTS generation and WAV caching."""
+class RaceVoicePlugin:
+    """RotorHazard plugin for Piper TTS generation and WAV caching."""
 
     def __init__(self, rhapi: Any) -> None:
         """Initialize the plugin and register RotorHazard integration points."""
@@ -118,7 +118,7 @@ class LocalVoicePlugin:
         )
         self._register_events()
         self._register_filters()
-        logger.info("Local Voice plugin initialized")
+        logger.info("Race Voice plugin initialized")
 
     # ------------------------------------------------------------------
     # Event + filter registration
@@ -182,7 +182,7 @@ class LocalVoicePlugin:
         """Synthesize lap callout in background using reusable segments."""
         expires_at: float = snapshot["expires_at"]
         if time.monotonic() > expires_at:
-            logger.info("Local Voice dropped expired lap synthesis job")
+            logger.info("Race Voice dropped expired lap synthesis job")
             return
 
         settings = snapshot["settings"]
@@ -228,7 +228,7 @@ class LocalVoicePlugin:
         """Wipe ephemeral lap-time WAVs and queued audio when a new heat is selected."""
         dropped = self._audio_queue.clear()
         if dropped:
-            logger.info("Local Voice cleared %d queued audio jobs on heat set", dropped)
+            logger.info("Race Voice cleared %d queued audio jobs on heat set", dropped)
 
         settings = self._settings()
         model_name = settings.model_name
@@ -285,19 +285,17 @@ class LocalVoicePlugin:
             text = DEFAULT_TEST_PHRASE
         wav_path = self._synthesize(text, "test")
         if wav_path is None:
-            self._rhapi.ui.message_alert("Local Voice test failed - check logs")
+            self._rhapi.ui.message_alert("Race Voice test failed - check logs")
             return
         self._audio_queue.enqueue(
             text=text, wav_paths=[wav_path], priority=Priority.HIGH
         )
-        self._rhapi.ui.message_notify(
-            f"Local Voice test phrase queued: {wav_path.name}"
-        )
+        self._rhapi.ui.message_notify(f"Race Voice test phrase queued: {wav_path.name}")
 
     def play_audio_check(self, _args: dict[str, Any] | None = None) -> None:
         """Play the bundled audio-check WAV through Sendspin."""
         if not _AUDIO_CHECK_WAV.exists():
-            self._rhapi.ui.message_alert("Local Voice audio check WAV is missing")
+            self._rhapi.ui.message_alert("Race Voice audio check WAV is missing")
             return
         self._audio_queue.enqueue(
             text="Sendspin audio check",
@@ -306,14 +304,14 @@ class LocalVoicePlugin:
             expiry_sec=45.0,
         )
         self._rhapi.ui.message_notify(
-            f"Local Voice audio check queued: {_AUDIO_CHECK_WAV.name}"
+            f"Race Voice audio check queued: {_AUDIO_CHECK_WAV.name}"
         )
 
     def stop_audio(self, _args: dict[str, Any] | None = None) -> None:
         """Stop current Sendspin playback and clear queued audio."""
         dropped = self._audio_queue.clear()
         self._sendspin.stop()
-        self._rhapi.ui.message_notify(f"Local Voice audio stopped ({dropped} queued)")
+        self._rhapi.ui.message_notify(f"Race Voice audio stopped ({dropped} queued)")
 
     def clear_tts_cache(self, _args: dict[str, Any] | None = None) -> None:
         """Delete all cached WAV files for the currently selected model."""
@@ -322,13 +320,13 @@ class LocalVoicePlugin:
         model_name = self._model_name()
         model_tts_dir = self._tts.tts_dir_for_model(model_name)
         if not model_tts_dir.exists():
-            self._rhapi.ui.message_notify("Local Voice: cache is already empty")
+            self._rhapi.ui.message_notify("Race Voice: cache is already empty")
             return
         wav_files = [path for path in model_tts_dir.rglob("*.wav") if path.is_file()]
         for wav_file in wav_files:
             wav_file.unlink(missing_ok=True)
         self._rhapi.ui.message_notify(
-            f"Local Voice: cleared {len(wav_files)} WAV files for {model_name}"
+            f"Race Voice: cleared {len(wav_files)} WAV files for {model_name}"
         )
 
     def rebuild_precache(self, _args: dict[str, Any] | None = None) -> None:
@@ -369,7 +367,7 @@ class LocalVoicePlugin:
     ) -> None:
         """Synthesize text and push it onto the audio queue."""
         if time.monotonic() > expires_at:
-            logger.info("Local Voice dropped expired enqueue job: '%s'", text)
+            logger.info("Race Voice dropped expired enqueue job: '%s'", text)
             return
         if wav_path := self._synthesize(text, subdir, settings):
             self._audio_queue.enqueue(
@@ -438,16 +436,16 @@ class LocalVoicePlugin:
             if wav_file.unlink(missing_ok=True) is None
         )
         if count:
-            logger.info("Local Voice cleared %d %s WAV files", count, label)
+            logger.info("Race Voice cleared %d %s WAV files", count, label)
 
     def _set_status(self, status: str) -> None:
         if any(status.startswith(prefix) for prefix in _DEBUG_STATUS_PREFIXES):
-            logger.debug("Local Voice status: %s", status)
+            logger.debug("Race Voice status: %s", status)
         else:
-            logger.info("Local Voice status: %s", status)
+            logger.info("Race Voice status: %s", status)
         if any(status.startswith(prefix) for prefix in _UI_NOTIFY_PREFIXES):
             with contextlib.suppress(Exception):
-                self._rhapi.ui.message_notify(f"Local Voice: {status}")
+                self._rhapi.ui.message_notify(f"Race Voice: {status}")
 
     def _enabled(self) -> bool:
         return self._flag(ENABLE_OPTION, default=False)

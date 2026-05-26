@@ -20,7 +20,7 @@ ARG SERVICE_VERSION=0.0.0+dev
 
 LABEL org.opencontainers.image.title="Sendspin Service"
 LABEL org.opencontainers.image.description="Standalone Sendspin playback service with HTTP ingest API"
-LABEL org.opencontainers.image.source="https://github.com/dutchdronesquad/rh-local-voice"
+LABEL org.opencontainers.image.source="https://github.com/dutchdronesquad/rh-race-voice"
 LABEL org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONUNBUFFERED=1

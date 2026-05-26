@@ -82,7 +82,7 @@ class AudioQueue:
             volume=volume,
         )
         self._queue.put(job)
-        logger.debug("Local Voice queued [%s] '%s'", priority.name, text)
+        logger.debug("Race Voice queued [%s] '%s'", priority.name, text)
 
     def clear(self) -> int:
         """Drop queued jobs that have not started yet."""
@@ -101,10 +101,10 @@ class AudioQueue:
             job = self._queue.get()
             try:
                 if time.monotonic() > job.expires_at:
-                    logger.info("Local Voice dropped expired job: '%s'", job.text)
+                    logger.info("Race Voice dropped expired job: '%s'", job.text)
                     continue
                 logger.info(
-                    "Local Voice playing [%s]: %s",
+                    "Race Voice playing [%s]: %s",
                     job.priority.name,
                     ", ".join(p.name for p in job.wav_paths),
                 )
@@ -117,6 +117,6 @@ class AudioQueue:
                     job.volume,
                 )
             except Exception:
-                logger.exception("Local Voice worker error for '%s'", job.text)
+                logger.exception("Race Voice worker error for '%s'", job.text)
             finally:
                 self._queue.task_done()

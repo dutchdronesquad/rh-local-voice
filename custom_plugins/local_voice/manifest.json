@@ -1,10 +1,10 @@
 {
   "domain": "local_voice",
-  "name": "Local Voice",
+  "name": "Race Voice",
   "author": "Dutch Drone Squad",
   "license": "MIT",
-  "description": "Generate RotorHazard voice callout WAV files locally with Piper TTS.",
-  "documentation_uri": "https://github.com/dutchdronesquad/rh-local-voice",
+  "description": "Generate RotorHazard race voice callout WAV files with Piper TTS.",
+  "documentation_uri": "https://github.com/dutchdronesquad/rh-race-voice",
   "required_rhapi_version": "1.0",
   "version": "0.1.0",
   "dependencies": [

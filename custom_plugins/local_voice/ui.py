@@ -1,4 +1,4 @@
-"""UI panel, options, and quick-buttons registration for Local Voice."""
+"""UI panel, options, and quick-buttons registration for Race Voice."""
 
 from __future__ import annotations
 
@@ -39,18 +39,17 @@ def register_ui(  # noqa: PLR0913
     clear_cache_callback: Any,
     rebuild_precache_callback: Any,
 ) -> None:
-    """Register the Local Voice settings panel, options, and quick buttons."""
+    """Register the Race Voice settings panel, options, and quick buttons."""
     _register_player_blueprint(rhapi)
-    rhapi.ui.register_panel(PANEL_ID, "Local Voice", "run", open=False)
+    rhapi.ui.register_panel(PANEL_ID, "Race Voice", "run", open=False)
 
-    # Main enable
     rhapi.fields.register_option(
         UIField(
             ENABLE_OPTION,
             "Enable plugin audio",
             UIFieldType.CHECKBOX,
             value=False,
-            desc="Generate server-side local voice callout WAV files.",
+            desc="Generate server-side race voice callout WAV files.",
         ),
         panel=PANEL_ID,
     )
@@ -75,7 +74,6 @@ def register_ui(  # noqa: PLR0913
         ),
         panel=PANEL_ID,
     )
-    # Voice model + speed
     rhapi.fields.register_option(
         UIField(
             VOICE_MODEL_OPTION,

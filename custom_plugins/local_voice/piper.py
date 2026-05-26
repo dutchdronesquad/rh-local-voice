@@ -107,7 +107,7 @@ class PiperSynthesizer:
             if wav_path.exists() and self.valid_wav(wav_path):
                 duration_ms = int((time.perf_counter() - started) * 1000)
                 logger.debug(
-                    "Local Voice cache hit for '%s': %s", normalized_text, wav_path
+                    "Race Voice cache hit for '%s': %s", normalized_text, wav_path
                 )
                 return SynthesisResult(
                     text=normalized_text,
@@ -138,7 +138,7 @@ class PiperSynthesizer:
                 wav_path.unlink(missing_ok=True)
                 self._set_status(f"Synthesis failed: {exc}")
                 logger.exception(
-                    "Local Voice synthesis failed for '%s'", normalized_text
+                    "Race Voice synthesis failed for '%s'", normalized_text
                 )
                 return None
 
@@ -183,10 +183,10 @@ class PiperSynthesizer:
                     "ready", wav_file, syn_config=self._make_syn_config(params)
                 )
         except Exception:
-            logger.exception("Local Voice: model preparation failed for %s", model_name)
+            logger.exception("Race Voice: model preparation failed for %s", model_name)
             return False
         else:
-            logger.info("Local Voice: model prepared for %s", model_name)
+            logger.info("Race Voice: model prepared for %s", model_name)
             return True
 
     def _load_voice(self, model_name: str) -> Any | None:
@@ -223,9 +223,7 @@ class PiperSynthesizer:
                 self._voice = None
                 self._loaded_model = None
                 self._set_status(f"Model load failed: {exc}")
-                logger.exception(
-                    "Local Voice failed to load Piper model %s", model_name
-                )
+                logger.exception("Race Voice failed to load Piper model %s", model_name)
                 return None
 
             return self._voice
@@ -279,7 +277,7 @@ class PiperSynthesizer:
             except (OSError, urllib.error.URLError) as exc:
                 destination.unlink(missing_ok=True)
                 self._set_status(f"Model download failed: {exc}")
-                logger.exception("Local Voice model download failed from %s", url)
+                logger.exception("Race Voice model download failed from %s", url)
                 return None
 
         return model_path

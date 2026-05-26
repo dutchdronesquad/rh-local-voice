@@ -1,12 +1,12 @@
-"""Local server-side voice callouts for RotorHazard."""
+"""Race voice callouts for RotorHazard."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .plugin import LocalVoicePlugin
+from .plugin import RaceVoicePlugin
 
 
-def initialize(rhapi: Any) -> LocalVoicePlugin:
+def initialize(rhapi: Any) -> RaceVoicePlugin:
     """RotorHazard plugin entry point."""
-    return LocalVoicePlugin(rhapi)
+    return RaceVoicePlugin(rhapi)

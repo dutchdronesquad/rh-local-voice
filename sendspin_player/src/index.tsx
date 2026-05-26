@@ -356,7 +356,7 @@ export function App() {
     const player = new SendspinPlayer({
       baseUrl: normalizedUrl,
       playerId,
-      clientName: "Local Voice Browser Player",
+      clientName: "Race Voice Browser Player",
       codecs: [...CODECS],
       correctionMode,
       correctionThresholds: CORRECTION_THRESHOLDS,

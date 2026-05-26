@@ -29,11 +29,11 @@ jobs:
         run: npm run build:plugin
         working-directory: sendspin_player
       - name: 📦 Package plugin
-        run: zip -r local_voice.zip custom_plugins
+        run: zip -r race_voice.zip custom_plugins
       - name: ⬆️ Upload release asset
         uses: softprops/action-gh-release@v3.0.0
         with:
-          files: local_voice.zip
+          files: race_voice.zip
 
   build-deb:
     name: Build ${{ matrix.arch }} .deb

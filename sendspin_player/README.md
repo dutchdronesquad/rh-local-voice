@@ -1,6 +1,6 @@
 # Sendspin Browser Player
 
-This is the React/shadcn browser player for Local Voice. It connects to a
+This is the React/shadcn browser player for Race Voice. It connects to a
 Sendspin server with `@sendspin/sendspin-js`. The standalone Sendspin service
 serves it at `/`; the RotorHazard plugin serves its plugin build at `/player`.
 
@@ -37,7 +37,7 @@ npm run build:plugin
 ```
 
 `npm run build` builds for root hosting (`/`), which is the standalone
-Docker/cloud service default. `npm run build:plugin` builds for RotorHazard's
+Docker service default. `npm run build:plugin` builds for RotorHazard's
 `/player/` route. Both commands run the TypeScript build and write the
 production player files to `custom_plugins/local_voice/player/`.
 
@@ -55,7 +55,7 @@ production player files to `custom_plugins/local_voice/player/`.
 
 ## Credits
 
-This player UI is a Local Voice wrapper around Sendspin. Sendspin and the
+This player UI is a Race Voice wrapper around Sendspin. Sendspin and the
 browser SDK are Open Home Foundation projects; see
 [sendspin-audio.com](https://www.sendspin-audio.com/) and
 [openhomefoundation.org](https://www.openhomefoundation.org/).

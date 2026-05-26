@@ -1,4 +1,4 @@
-"""Manual pre-cache rebuild orchestration for Local Voice."""
+"""Manual pre-cache rebuild orchestration for Race Voice."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ class PrecacheManager:
         """Clear and regenerate pre-cached phrases for current settings and heat."""
         generation = self._next_generation()
         self._clear_precache(settings.model_name)
-        self._notify("Local Voice: rebuilding pre-cache...")
+        self._notify("Race Voice: rebuilding pre-cache...")
 
         future = self._synth_pool.submit(
             self._rebuild,
@@ -100,7 +100,7 @@ class PrecacheManager:
         count = 0
         for threshold in DEFAULT_THRESHOLDS:
             if not self._is_current(generation):
-                logger.info("Local Voice stopped stale schedule pre-cache job")
+                logger.info("Race Voice stopped stale schedule pre-cache job")
                 return count
             count += self._precache_phrase(
                 self._schedule_phrase(threshold, settings.model_name),
@@ -114,7 +114,7 @@ class PrecacheManager:
         count = 0
         for segment in self._lap_callouts.precache_lap_segments(settings.model_name):
             if not self._is_current(generation):
-                logger.info("Local Voice stopped stale lap pre-cache job")
+                logger.info("Race Voice stopped stale lap pre-cache job")
                 return count
             count += self._precache_phrase(segment.text, segment.subdir, settings)
         return count
@@ -132,7 +132,7 @@ class PrecacheManager:
             count += self._precache_phrase(segment.text, segment.subdir, settings)
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
-            "Local Voice pre-cached %d new WAV(s) for heat %s in %dms",
+            "Race Voice pre-cached %d new WAV(s) for heat %s in %dms",
             count,
             heat_id,
             elapsed_ms,
@@ -151,7 +151,7 @@ class PrecacheManager:
     def _precache_stopped(self, generation: int, heat_id: int) -> bool:
         if self._is_current(generation):
             return False
-        logger.info("Local Voice stopped stale pre-cache job for heat %s", heat_id)
+        logger.info("Race Voice stopped stale pre-cache job for heat %s", heat_id)
         return True
 
     def _on_rebuild_done(
@@ -162,19 +162,19 @@ class PrecacheManager:
         try:
             count = future.result() or 0
         except Exception:
-            logger.exception("Local Voice pre-cache rebuild failed")
+            logger.exception("Race Voice pre-cache rebuild failed")
             return
 
         with contextlib.suppress(Exception):
             if heat_id:
                 heat_name = self._heat_name_for_id(heat_id)
                 self._notify(
-                    f"Local Voice: pre-cache rebuild complete for {heat_name}"
+                    f"Race Voice: pre-cache rebuild complete for {heat_name}"
                     f" ({count} new WAV files)"
                 )
             else:
                 self._notify(
-                    f"Local Voice: pre-cache rebuild complete ({count} new WAV files)"
+                    f"Race Voice: pre-cache rebuild complete ({count} new WAV files)"
                 )
 
     @staticmethod
@@ -188,4 +188,4 @@ class PrecacheManager:
             if wav_file.unlink(missing_ok=True) is None
         )
         if count:
-            logger.info("Local Voice cleared %d %s WAV files", count, label)
+            logger.info("Race Voice cleared %d %s WAV files", count, label)

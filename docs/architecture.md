@@ -4,7 +4,7 @@
 
 ```text
 RotorHazard event/filter
-  -> LocalVoicePlugin
+  -> RaceVoicePlugin
   -> PiperSynthesizer
   -> WAV cache
   -> AudioQueue
@@ -36,7 +36,7 @@ The plugin sends `/v1/play` requests with inline `wav_files` payloads. The servi
 The same service code is packaged in two deployment formats:
 
 - `.deb` + systemd for local Pi/Ubuntu timing-server installs.
-- Docker image for container/cloud deployments, with the browser player served from `/player`.
+- Docker image for container/cloud deployments, with the browser player served from `/`.
 
 Service endpoints:
 

@@ -1,4 +1,4 @@
-# Local Voice Callouts Plugin — Plan of Approach
+# Race Voice Callouts Plugin — Plan of Approach
 
 ## Current Implementation Note
 
@@ -51,7 +51,7 @@ Things that would make the plugin significantly easier or more capable, but don'
 
 **Ideal fix:** Add a post-plugin-load event such as `Evt.PLUGINS_READY` or `Evt.SETTINGS_READY`, fired after plugin loading and registered setting defaults are initialized. This gives plugins a stable point to read options and start background work.
 
-**Status: Post-MVP / deferred.** Local Voice does not automatically build startup pre-cache until RH exposes a reliable lifecycle event. Operators can use **Rebuild pre-cache** after startup.
+**Status: Post-MVP / deferred.** Race Voice does not automatically build startup pre-cache until RH exposes a reliable lifecycle event. Operators can use **Rebuild pre-cache** after startup.
 
 ---
 
@@ -235,7 +235,7 @@ migration. Build, Docker, release, and developer documentation all point at
 #### Source and build output
 
 ```text
-rh-local-voice/
+rh-race-voice/
   sendspin_player/                 # Vite/React/shadcn source app
     package.json
     package-lock.json
@@ -290,7 +290,7 @@ Player construction follows this shape:
 new SendspinPlayer({
   baseUrl,
   playerId,
-  clientName: "Local Voice Browser Player",
+  clientName: "Race Voice Browser Player",
   codecs: ["pcm"],
   correctionMode,
   reconnect: {
@@ -360,7 +360,7 @@ Ownership note: the RotorHazard plugin owns the local browser player because it 
 
 ```
 RotorHazard server
-  └── Local Voice Plugin (Python 3.12+, RHAPI)
+  └── Race Voice Plugin (Python 3.12+, RHAPI)
         ├── Event listeners
         │     Evt.HEAT_SET, CROSSING_ENTER/EXIT
         ├── Flt.EMIT_PHONETIC_DATA  (lap data snapshots)

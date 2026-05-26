@@ -1,4 +1,4 @@
-"""Output adapters for Local Voice playback."""
+"""Output adapters for Race Voice playback."""
 
 from __future__ import annotations
 
@@ -44,11 +44,11 @@ class SendspinServiceClient:
     ) -> None:
         """Send WAV files to the service as inline base64 payloads."""
         if expires_at is not None and time.monotonic() > expires_at:
-            logger.info("Local Voice dropped stale service audio: '%s'", text)
+            logger.info("Race Voice dropped stale service audio: '%s'", text)
             return
         wav_files = self._wav_files(wav_paths)
         if not wav_files:
-            logger.warning("Local Voice: no readable WAV files for Sendspin service")
+            logger.warning("Race Voice: no readable WAV files for Sendspin service")
             return
         payload: dict[str, Any] = {
             "text": text,
@@ -74,7 +74,7 @@ class SendspinServiceClient:
                 data = wav_path.read_bytes()
             except OSError:
                 logger.exception(
-                    "Local Voice: cannot read WAV for Sendspin service: %s",
+                    "Race Voice: cannot read WAV for Sendspin service: %s",
                     wav_path,
                 )
                 continue
@@ -88,46 +88,44 @@ class SendspinServiceClient:
         return wav_files
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> None:
-        base_url = self._base_url()
-        url = f"{base_url}{path}"
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        request = urllib.request.Request(  # noqa: S310
-            url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
         try:
-            with urllib.request.urlopen(  # noqa: S310
-                request,
-                timeout=self._timeout_s(),
-            ) as response:
+            base_url = self._base_url()
+            request = urllib.request.Request(  # noqa: S310
+                f"{base_url}{path}",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=self._timeout_s()) as response:  # noqa: S310
                 if response.status >= 400:
                     logger.error(
-                        "Local Voice: Sendspin service request failed: %s %s",
+                        "Race Voice: Sendspin service request failed: %s %s",
                         response.status,
                         path,
                     )
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")
             logger.exception(
-                "Local Voice: Sendspin service rejected %s (%s): %s",
+                "Race Voice: Sendspin service rejected %s (%s): %s",
                 path,
                 exc.code,
                 error_body,
             )
         except urllib.error.URLError as exc:
             logger.exception(
-                "Local Voice: Sendspin service is not reachable at %s: %s",
+                "Race Voice: Sendspin service is not reachable at %s: %s",
                 base_url,
                 exc.reason,
             )
         except TimeoutError:
             logger.exception(
-                "Local Voice: Sendspin service timed out after %.1fs: %s",
+                "Race Voice: Sendspin service timed out after %.1fs: %s",
                 self._timeout_s(),
                 path,
             )
+        except ValueError:
+            logger.exception("Race Voice: invalid Sendspin service URL")
 
     def _base_url(self) -> str:
         url = self._service_url().strip().rstrip("/")

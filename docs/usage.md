@@ -1,13 +1,13 @@
 # Usage Guide
 
-Local Voice generates RotorHazard callout WAV files on the timing server and sends them to `sendspin-service` over local HTTP. The plugin serves the browser player at `/player`; the service owns the Sendspin player endpoint on port `8927`.
+Race Voice generates RotorHazard callout WAV files on the timing server and sends them to `sendspin-service` over HTTP. The RotorHazard plugin serves its browser player at `/player`; the standalone service/container serves its player at `/`.
 
 The plugin ZIP and service `.deb` are separate release assets. Install both for a normal RotorHazard setup: the plugin provides RotorHazard integration and the `/player` page, while `sendspin-service` provides playback transport.
 
 ## Setup
 
 1. Install and start `sendspin-service`.
-2. In RotorHazard, open **Settings** -> **Local Voice**.
+2. In RotorHazard, open **Settings** -> **Race Voice**.
 3. Enable **Plugin audio**.
 4. Confirm **Sendspin service URL** is `http://127.0.0.1:8766`.
 5. Choose a voice model and speech settings.
@@ -48,7 +48,7 @@ The service API accepts inline WAV payloads via `wav_files`. It does not accept 
 
 ## Docker Image
 
-The Docker image is the container/cloud deployment path for `sendspin-service`. For a normal Raspberry Pi timing-server install, use the `.deb` package instead.
+The Docker image is the container deployment path for `sendspin-service`. For a normal Raspberry Pi timing-server install, use the `.deb` package instead.
 
 Basic local container run:
 
@@ -67,11 +67,9 @@ sed -i "s/change-this-token/$(openssl rand -hex 32)/" .env
 docker compose up -d
 ```
 
-The included Compose file is production-oriented and pulls the published GHCR image. For local image development, build the image directly with `docker build -t sendspin-service:dev .`.
+The included Compose file builds the local Dockerfile by default. To run the published image instead, replace the `build:` block with `image: ghcr.io/dutchdronesquad/sendspin-service:latest`.
 
-The container serves the browser player at `http://<container-host>:8766/player`.
-
-With Nginx Proxy Manager, point a proxy host such as `voice.example.com` at the container host on port `8766` for the player and HTTP ingest API. The Sendspin WebSocket endpoint on port `8927` also needs to be reachable by browser clients, either through a second proxy/stream entry or by exposing the port directly on the trusted network.
+The container serves the browser player at `http://<container-host>:8766/`. The HTTP ingest API is on the same port under `/v1`, and the health check is available at `/health`. Browser clients connect to the Sendspin WebSocket endpoint on port `8927` at `/sendspin`.
 
 Container defaults:
 
@@ -85,9 +83,9 @@ SENDSPIN_MAX_BODY_MB=50
 SENDSPIN_PLAYER_DIR=/opt/sendspin-service/player
 ```
 
-For a public cloud/container deployment, set `SENDSPIN_API_TOKEN` before exposing port `8766`. Producers must send `Authorization: Bearer <token>` for `/v1/play` and `/v1/stop`. Keep it unset only for local-only testing on a trusted machine.
+For a public container deployment, set `SENDSPIN_API_TOKEN` before exposing port `8766`. Producers must send `Authorization: Bearer <token>` for `/v1/play` and `/v1/stop`. Keep it unset only for local-only testing on a trusted machine.
 
-The image does not include the RotorHazard plugin. The bundled player is for direct container/cloud use; the normal RotorHazard plugin ZIP still serves its own `/player` route.
+The image does not include the RotorHazard plugin. The bundled player is for direct container use; the normal RotorHazard plugin ZIP still serves its own `/player` route.
 
 Manual playback test:
 
@@ -152,8 +150,8 @@ Package CI:
 
 ## Settings
 
-- **Enable plugin audio**: Turns Local Voice callout generation on or off.
-- **Sendspin service URL**: Local HTTP endpoint for `sendspin-service`. Default: `http://127.0.0.1:8766` when the plugin and service run on the same host.
+- **Enable plugin audio**: Turns Race Voice callout generation on or off.
+- **Sendspin service URL**: HTTP endpoint for `sendspin-service`. Default: `http://127.0.0.1:8766` when the plugin and service run on the same host.
 - **Sendspin service timeout**: HTTP timeout for queue/stop requests to `sendspin-service`.
 - **Voice model**: Piper voice model. Models are downloaded once and reused.
 - **Speech speed**: Speaking rate. `1.0` is Piper default.
@@ -178,7 +176,7 @@ Use **Rebuild pre-cache** after startup or voice setting changes to prepare curr
 
 ## Troubleshooting
 
-- **No audio in `/player`**: confirm `sendspin-service` is running, port `8927` is reachable from the playback device, and the player is connected.
+- **No audio in `/player`**: confirm `sendspin-service` is running, the player Server URL points at the same service RotorHazard sends to, and the player is connected.
 - **Service unreachable**: confirm `curl http://127.0.0.1:8766/health` works from the RotorHazard host.
 - **Player page unreachable**: confirm `<RotorHazard UI base URL>/player` works from the playback device.
 - **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in regular RotorHazard browser clients.

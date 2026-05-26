@@ -59,7 +59,7 @@ class AudioQueue:
         self._player = player
         self._queue: queue.PriorityQueue[AudioJob] = queue.PriorityQueue()
         self._thread = threading.Thread(
-            target=self._worker, daemon=True, name="local_voice_audio"
+            target=self._worker, daemon=True, name="race_voice_audio"
         )
         self._thread.start()
 

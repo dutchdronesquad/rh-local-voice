@@ -244,7 +244,7 @@ class PiperSynthesizer:
     def _temp_wav_path(directory: Path) -> Path:
         """Create a unique temporary WAV path in the destination directory."""
         with tempfile.NamedTemporaryFile(
-            prefix=".local_voice_",
+            prefix=".race_voice_",
             suffix=".wav.tmp",
             dir=directory,
             delete=False,

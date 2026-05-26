@@ -53,13 +53,13 @@ If the service is stopped or missing, the plugin should log a direct message tha
 
 ## Current State
 
-- Plugin output uses `SendspinServiceClient` in `custom_plugins/local_voice/output.py`.
+- Plugin output uses `SendspinServiceClient` in `custom_plugins/race_voice/output.py`.
 - The service API accepts `wav_files` inline base64 payloads. `wav_paths` is not part of the supported API.
 - The packaged service runs with `DynamicUser=yes`, so it does not need read access to RotorHazard/plugin cache directories.
 - Service packaging uses a uv-built bundled CPython runtime and `nfpm`.
 - The service package dependency set is separate from the plugin dependency set.
 - `av`, `numpy`, and `pillow` are currently required by the `aiosendspin` runtime path.
-- The old plugin-side `custom_plugins/local_voice/sendspin.py` has been removed.
+- The old plugin-side `custom_plugins/race_voice/sendspin.py` has been removed.
 - The local browser player remains part of the RotorHazard plugin and is served at `/player`.
 - The local `.deb` package is intentionally headless: it exposes the HTTP ingest API and Sendspin WebSocket endpoint, but does not serve a player UI.
 
@@ -214,7 +214,7 @@ Important measurement history:
 - [x] Confirm `wav_paths` is not part of the supported service API.
 - [x] Add GitHub Actions workflow for service package builds.
 - [x] Publish both `amd64` and `arm64` package artifacts on release.
-- [x] Remove old plugin-side `custom_plugins/local_voice/sendspin.py`.
+- [x] Remove old plugin-side `custom_plugins/race_voice/sendspin.py`.
 - [x] Keep `/health` available for service/package diagnostics.
 - [ ] Decide whether the plugin should surface service health as status text instead of a separate quick button.
 - [x] Add release checksums for service package assets.

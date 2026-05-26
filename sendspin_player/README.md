@@ -7,11 +7,11 @@ serves it at `/`; the RotorHazard plugin serves its plugin build at `/player`.
 The source app lives in this directory, but production assets are written to:
 
 ```text
-../custom_plugins/local_voice/player/
+../custom_plugins/race_voice/player/
 ```
 
 That output path is intentional. The plugin ZIP and Docker image both copy or
-serve the built files from `custom_plugins/local_voice/player/` while keeping
+serve the built files from `custom_plugins/race_voice/player/` while keeping
 the editable frontend source in `sendspin_player/`.
 
 ## Development
@@ -39,7 +39,7 @@ npm run build:plugin
 `npm run build` builds for root hosting (`/`), which is the standalone
 Docker service default. `npm run build:plugin` builds for RotorHazard's
 `/player/` route. Both commands run the TypeScript build and write the
-production player files to `custom_plugins/local_voice/player/`.
+production player files to `custom_plugins/race_voice/player/`.
 
 ## Runtime Notes
 

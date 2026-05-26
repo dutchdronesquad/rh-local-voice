@@ -110,7 +110,7 @@ with wave.open("out.wav", "wb") as f:
 ```
 
 **Pro:** no subprocess startup overhead, no binary path to manage, same install path as other Python dependencies.
-**Model download:** the plugin downloads the selected voice model automatically from the Hugging Face `rhasspy/piper-voices` repository on first use (or when the model is changed). Models are cached in `~/rh-data/local_voice_cache/models/`. Internet is only needed once per model; race operation is fully offline after that.
+**Model download:** the plugin downloads the selected voice model automatically from the Hugging Face `rhasspy/piper-voices` repository on first use (or when the model is changed). Models are cached in `~/rh-data/race_voice_cache/models/`. Internet is only needed once per model; race operation is fully offline after that.
 
 **Supported languages:** English, Dutch, and German to start. Recommended default models: `en_GB-alan-medium` (English) and `nl_NL-mls-medium` (Dutch). The plugin setting shows a dropdown of available models; the operator picks one per installation.
 **Mitigation for synthesis latency:** cache generated phrases by normalized text and synthesis parameters. The plugin pre-generates predictable pilot-name segments and lap-number segments. Real-time synthesis remains necessary for dynamic lap times and unexpected text.
@@ -229,7 +229,7 @@ The browser player source now lives in the root-level `sendspin_player/` app.
 The previous root-level `player/` source directory has been removed in this
 migration. Build, Docker, release, and developer documentation all point at
 `sendspin_player/`. Production assets still build into
-`custom_plugins/local_voice/player/` so the RotorHazard plugin can serve
+`custom_plugins/race_voice/player/` so the RotorHazard plugin can serve
 `/player` from the plugin ZIP.
 
 #### Source and build output
@@ -245,7 +245,7 @@ rh-race-voice/
     src/
       index.tsx
       index.css
-  custom_plugins/local_voice/player/
+  custom_plugins/race_voice/player/
     index.html                    # generated during plugin release build
     assets/...                    # generated during plugin release build
 ```
@@ -257,7 +257,7 @@ rh-race-voice/
 - Router: **No**. The app is a single runtime page served at `/player`; routing adds no value.
 - Prerender / SSG: **No**. The app depends on WebSocket, WebAudio, user gestures, and runtime Sendspin state.
 - ESLint: **Yes**. Realtime audio and connection-state code benefits from catching simple mistakes early.
-- Build output: `custom_plugins/local_voice/player/`.
+- Build output: `custom_plugins/race_voice/player/`.
 - Plugin route: `GET /player` returns the built `index.html`; static assets are served from the same directory.
 
 Design note: use real shadcn/Radix primitives, not local lookalike component
@@ -332,13 +332,13 @@ Ownership note: the RotorHazard plugin owns the local browser player because it 
 }
 ```
 
-`vite.config.ts` uses a small `fromConfig()` helper and writes production output to `custom_plugins/local_voice/player`.
+`vite.config.ts` uses a small `fromConfig()` helper and writes production output to `custom_plugins/race_voice/player`.
 
 #### Validation checklist
 
 - [x] `npm run check` passes in the current player app.
 - [x] `npm run lint` passes in the current player app.
-- [x] `npm run build` emits `custom_plugins/local_voice/player/index.html` and assets.
+- [x] `npm run build` emits `custom_plugins/race_voice/player/index.html` and assets.
 - [x] RotorHazard plugin serves `/player` and static player assets.
 - [x] Hard refresh / clean localStorage computes a usable default URL from the current host.
 - [x] Browser player connects to `aiosendspin` on `8927`.
@@ -370,7 +370,7 @@ RotorHazard server
         ├── services/schedule.py    (scheduled-race countdown timers)
         ├── Async audio queue (FIFO, priority levels)
         ├── TTS: piper-tts (in-process) → WAV cache
-        │     ~/rh-data/local_voice_cache/tts/
+        │     ~/rh-data/race_voice_cache/tts/
         └── Sendspin output
               Local: HTTP client → local Sendspin service
               Cloud: HTTP client → cloud Sendspin service
@@ -494,7 +494,7 @@ Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyo
 **Goal:** A working plugin that generates a valid WAV file from text using the `piper-tts` Python package. Proves the TTS pipeline and cache end to end.
 
 #### Plugin structure
-- [x] Create `custom_plugins/local_voice/__init__.py` with `initialize(rhapi)` entry point
+- [x] Create `custom_plugins/race_voice/__init__.py` with `initialize(rhapi)` entry point
 - [x] Register a settings panel via `rhapi.ui.register_panel()`
 - [x] Add "Enable plugin audio" toggle via `rhapi.fields.register_option()`
 - [x] Add voice model selector setting (12 models: EN-GB, EN-US, NL, DE)
@@ -503,14 +503,14 @@ Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyo
 
 #### piper-tts integration
 - [x] Add `piper-tts` to plugin dependencies
-- [x] On first use (or model change): auto-download selected voice model from Hugging Face into `~/rh-data/local_voice_cache/models/`
+- [x] On first use (or model change): auto-download selected voice model from Hugging Face into `~/rh-data/race_voice_cache/models/`
 - [x] Handle download failure with a clear error message (status logged; no panel field — see note below)
 - [x] Load `PiperVoice` lazily on first synthesis; reload when the model changes
 - [x] Synthesize text to WAV using `voice.synthesize_wav(text, wav_file, syn_config)` (piper-tts >= 1.4 API)
 - [x] Handle synthesis errors gracefully (log, skip, no crash)
 
 #### Audio cache
-- [x] Create cache directory: `~/rh-data/local_voice_cache/tts/`
+- [x] Create cache directory: `~/rh-data/race_voice_cache/tts/`
 - [x] Cache key: `{sha1(normalized_text)}_{speed}_{noise}_{noise_w}.wav` under a per-model directory
 - [x] On cache hit: return existing WAV path, skip synthesis
 - [x] On cache miss: synthesize, write to cache, return WAV path
@@ -595,7 +595,7 @@ Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyo
 - [x] Browser player served at `/player`
 - [x] Original root-level `player/` Vite/Preact app scaffolded
 - [x] Add `@sendspin/sendspin-js` to the root-level player app
-- [x] Configure Vite build output to `custom_plugins/local_voice/player` for plugin release packaging
+- [x] Configure Vite build output to `custom_plugins/race_voice/player` for plugin release packaging
 - [x] Replace template UI with `SendspinPlayer`-based app
 - [x] Add compact diagnostics for sync drift, correction mode, reconnects, and player state
 - [x] Browser player is served by the RotorHazard plugin; live connection state is owned by the browser player UI, not the RotorHazard settings panel

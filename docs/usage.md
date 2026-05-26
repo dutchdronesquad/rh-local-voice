@@ -96,7 +96,7 @@ import json
 import urllib.request
 
 wav_data = base64.b64encode(
-    open("custom_plugins/local_voice/assets/moavii-foreign.wav", "rb").read()
+    open("custom_plugins/race_voice/assets/moavii-foreign.wav", "rb").read()
 ).decode("ascii")
 payload = json.dumps({
     "text": "audio check",
@@ -164,7 +164,7 @@ Package CI:
 Generated files live under the RotorHazard data directory:
 
 ```text
-local_voice_cache/
+race_voice_cache/
   models/                 downloaded Piper ONNX models
   tts/<model>/            cached phrases
   tts/<model>/precache/   reusable pilot, lap, and schedule phrases

@@ -76,7 +76,7 @@ class RaceVoicePlugin:
         data_dir = Path(
             getattr(self._rhapi.server, "data_dir", Path.home() / "rh-data")
         )
-        cache_root = data_dir / "local_voice_cache"
+        cache_root = data_dir / "race_voice_cache"
         self._tts = PiperSynthesizer(
             model_dir=cache_root / "models",
             tts_dir=cache_root / "tts",
@@ -90,7 +90,7 @@ class RaceVoicePlugin:
         self._prepared_settings: VoiceSettings | None = None
         self._synth_pool = ThreadPoolExecutor(
             max_workers=os.cpu_count() or 4,
-            thread_name_prefix="local_voice_synth",
+            thread_name_prefix="race_voice_synth",
         )
         self._schedule_callouts = ScheduleCalloutManager(
             enqueue_callout=self._enqueue_schedule_callout,
@@ -126,33 +126,33 @@ class RaceVoicePlugin:
 
     def _register_events(self) -> None:
         self._rhapi.events.on(
-            Evt.HEAT_SET, self._on_heat_set, name="local_voice_heat_set"
+            Evt.HEAT_SET, self._on_heat_set, name="race_voice_heat_set"
         )
         self._rhapi.events.on(
             Evt.DATABASE_RESET,
             self._on_event_cache_reset,
-            name="local_voice_database_reset",
+            name="race_voice_database_reset",
         )
         self._rhapi.events.on(
             Evt.RACE_SCHEDULE,
             self._on_race_schedule,
-            name="local_voice_race_schedule",
+            name="race_voice_race_schedule",
         )
         self._rhapi.events.on(
             Evt.RACE_SCHEDULE_CANCEL,
             self._on_race_schedule_cancel,
-            name="local_voice_race_schedule_cancel",
+            name="race_voice_race_schedule_cancel",
         )
 
     def _register_filters(self) -> None:
         self._rhapi.filters.add(
             Flt.EMIT_PHONETIC_DATA,
-            "local_voice_phonetic_data",
+            "race_voice_phonetic_data",
             self._on_phonetic_data,
         )
         self._rhapi.filters.add(
             Flt.EMIT_PHONETIC_TEXT,
-            "local_voice_phonetic_text",
+            "race_voice_phonetic_text",
             self._on_phonetic_text,
         )
 

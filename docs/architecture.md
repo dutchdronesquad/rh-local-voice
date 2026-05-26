@@ -78,7 +78,7 @@ The plugin uses one shared `InferenceSession` with `intra_op_num_threads` set to
 ## Cache Layout
 
 ```text
-local_voice_cache/
+race_voice_cache/
   models/
     {model_name}.onnx
     {model_name}.onnx.json

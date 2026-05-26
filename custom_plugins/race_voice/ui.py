@@ -125,7 +125,7 @@ def register_ui(  # noqa: PLR0913
     # Panel notes
     rhapi.ui.register_markdown(
         PANEL_ID,
-        "local_voice_notes",
+        "race_voice_notes",
         '<a href="/player" target="_blank" rel="noopener noreferrer">'
         "Open browser player in a new tab</a>\n\n"
         "⚠ Set Voice Volume to 0 on all browser clients.\n\n"
@@ -147,31 +147,31 @@ def register_ui(  # noqa: PLR0913
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_test_phrase",
+        name="race_voice_test_phrase",
         label="Generate test phrase",
         function=test_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_audio_check",
+        name="race_voice_audio_check",
         label="Play audio check",
         function=audio_check_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_stop_audio",
+        name="race_voice_stop_audio",
         label="Stop audio",
         function=stop_audio_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_clear_cache",
+        name="race_voice_clear_cache",
         label="Clear TTS cache",
         function=clear_cache_callback,
     )
     rhapi.ui.register_quickbutton(
         panel=PANEL_ID,
-        name="local_voice_rebuild_precache",
+        name="race_voice_rebuild_precache",
         label="Rebuild pre-cache",
         function=rebuild_precache_callback,
     )
@@ -179,7 +179,7 @@ def register_ui(  # noqa: PLR0913
 
 def _register_player_blueprint(rhapi: Any) -> None:
     """Serve the Sendspin browser player at /player."""
-    bp = Blueprint("local_voice_player", __name__)
+    bp = Blueprint("race_voice_player", __name__)
 
     @bp.route("/player")
     def player_page() -> Any:

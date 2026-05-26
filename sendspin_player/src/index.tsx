@@ -180,10 +180,12 @@ function bucket(value: number | null, size: number): number | null {
 }
 
 function playerPageUrl(): string {
-  const url = new URL(window.location.href);
+  const url = new URL(import.meta.env.BASE_URL, window.location.origin);
   url.search = "";
   url.hash = "";
-  url.pathname = url.pathname.replace(/\/player(?:\/.*)?$/i, "/player");
+  if (url.pathname !== "/") {
+    url.pathname = url.pathname.replace(/\/+$/, "");
+  }
   return url.toString();
 }
 

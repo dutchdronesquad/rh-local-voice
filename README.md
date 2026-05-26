@@ -70,7 +70,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 3. Restart RotorHazard if requested.
 4. Download the matching `sendspin-service_*.deb` from the same GitHub release and install it on the RotorHazard host.
 5. Open the RotorHazard settings page and enable **Local Voice**.
-6. Confirm **Local Sendspin URL** points to the service, normally `http://127.0.0.1:8766`.
+6. Confirm **Sendspin service URL** points to the service, normally `http://127.0.0.1:8766`.
 7. Open `<RotorHazard UI base URL>/player` from the playback device.
 8. Use **Rebuild pre-cache** to prepare schedule, pilot-name, and lap-number WAV files.
 9. Use **Generate test phrase** or **Play audio check** to verify playback.

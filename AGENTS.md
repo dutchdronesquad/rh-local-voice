@@ -89,6 +89,19 @@ The README should stay selective: keep it focused on what Local Voice is, what i
 
 Keep user-facing docs aligned with actual race behavior, especially cache cleanup, browser playback, Sendspin port `8927`, and the need to set RotorHazard browser Voice Volume to `0` when Local Voice handles callouts.
 
+## PR Style
+
+Write PR descriptions as a short explanation of the change, not as a raw change
+log. Start with one or two paragraphs that explain the problem, the chosen
+direction, and the user-visible result. Use bullet lists only for the parts that
+are easier to scan as lists, such as notable implementation details, follow-up
+work, or validation steps.
+
+Avoid PR bodies made entirely of bullet lists. Do not enumerate every touched
+file or internal refactor unless it changes behavior, deployment, packaging, or
+the operator workflow. The reader should understand why the branch exists before
+they see the checklist.
+
 ## Changelog Style
 
 Write changelog entries for end users and race operators, not as an internal implementation log.

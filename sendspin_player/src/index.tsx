@@ -201,7 +201,6 @@ export function App() {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [state, setState] = useState<ConnectionState>("disconnected");
-  const [_error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [snapshot, setSnapshot] = useState<PlayerSnapshot>({
     isConnected: false,
@@ -218,7 +217,7 @@ export function App() {
   });
 
   const playerRef = useRef<SendspinPlayer | null>(null);
-  const logRef = useRef<HTMLElement | null>(null);
+  const logRef = useRef<HTMLElement>(null);
   const logIdRef = useRef(0);
   const hasConnectedRef = useRef(false);
   const lastPlayingRef = useRef(false);
@@ -330,7 +329,6 @@ export function App() {
       normalizedUrl = normalizeBaseUrl(baseUrl);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Invalid server URL";
-      setError(message);
       setState("error");
       addLog(message, "error");
       return;
@@ -339,7 +337,6 @@ export function App() {
     setBaseUrl(normalizedUrl);
     window.localStorage.setItem(STORE_SERVER_URL, normalizedUrl);
     setState("connecting");
-    setError(null);
     hasConnectedRef.current = false;
     resetDetailLogs();
     addLog(`Connecting to ${normalizedUrl}`);
@@ -367,7 +364,6 @@ export function App() {
         },
         onExhausted: () => {
           setState("error");
-          setError("Reconnect attempts exhausted");
           addLog("Reconnect attempts exhausted", "error");
         },
       },
@@ -406,7 +402,6 @@ export function App() {
       playerRef.current = null;
       hasConnectedRef.current = false;
       const message = err instanceof Error ? err.message : "Connection failed";
-      setError(message);
       setState("error");
       setServerOpen(true);
       addLog(message, "error");
@@ -717,7 +712,7 @@ export function App() {
 
         {/* Activity log */}
         <section
-          ref={logRef as React.RefObject<HTMLElement>}
+          ref={logRef}
           className="flex h-[128px] flex-col overflow-y-auto border-t border-border bg-background/60 px-5 py-[0.65rem] font-mono text-[0.7rem] text-muted-foreground"
           aria-label="Activity log"
         >

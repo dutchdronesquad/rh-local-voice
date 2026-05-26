@@ -358,10 +358,10 @@ player frontend served by the container at `/player`. It should evolve toward
 remote/QR use without forcing the local RotorHazard plugin to give up its
 operator-facing `/player` route.
 
-Current frontend direction: the standalone player has moved to the root-level
+Current frontend direction: the standalone player source lives in the root-level
 `sendspin_player/` Vite/React/shadcn app. Docker, CI/release workflows, and
-developer documentation now use the new path. The remaining cleanup is to remove
-the old `player/` source directory after the new path is confirmed end to end.
+developer documentation use that path. The previous root-level `player/` source
+directory has been removed in the player migration.
 
 Current Docker image scope:
 

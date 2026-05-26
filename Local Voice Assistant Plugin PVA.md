@@ -225,12 +225,12 @@ components and the official `@sendspin/sendspin-js` SDK. The player should not
 own WebAudio timing, buffering, correction, reconnect logic, or Sendspin
 protocol details; those remain SDK responsibilities.
 
-Current source ownership has moved from the old root-level `player/` app to the
-new `sendspin_player/` app. Build, Docker, release, and developer documentation
-now point at the new directory. The final cleanup step is to remove the old
-`player/` source directory once the migration branch is stable. Production assets
-still build into `custom_plugins/local_voice/player/` so the RotorHazard plugin
-can serve `/player` from the plugin ZIP.
+The browser player source now lives in the root-level `sendspin_player/` app.
+The previous root-level `player/` source directory has been removed in this
+migration. Build, Docker, release, and developer documentation all point at
+`sendspin_player/`. Production assets still build into
+`custom_plugins/local_voice/player/` so the RotorHazard plugin can serve
+`/player` from the plugin ZIP.
 
 #### Source and build output
 
@@ -347,7 +347,7 @@ Ownership note: the RotorHazard plugin owns the local browser player because it 
 - [x] MacBook/browser hiccup does not create persistent delay after recovery.
 - [x] Reconnect after Sendspin server restart works without page refresh.
 - [x] Retire old `player/` source path from Docker, CI/release workflows, and developer docs.
-- [ ] Remove old root-level `player/` source directory after the new player path is confirmed in release.
+- [x] Remove old root-level `player/` source directory as part of the player migration.
 
 ### Known Sendspin risks to validate before race day
 
@@ -601,7 +601,7 @@ Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyo
 - [x] Browser player is served by the RotorHazard plugin; live connection state is owned by the browser player UI, not the RotorHazard settings panel
 - [x] Standalone player migration started in `sendspin_player/` with React, Tailwind, shadcn/Radix, and the existing Sendspin SDK contract
 - [x] Retire the old root-level `player/` source path from workflows and developer docs
-- [ ] Remove the old root-level `player/` source directory after release validation
+- [x] Remove the old root-level `player/` source directory as part of the player migration
 
 **Success criteria:**
 - [x] "Test phrase" plays audibly through the browser player on a remote device

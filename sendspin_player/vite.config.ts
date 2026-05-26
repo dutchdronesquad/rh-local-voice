@@ -1,4 +1,5 @@
-import preact from "@preact/preset-vite";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
@@ -8,7 +9,7 @@ function fromConfig(relativePath: string): string {
 
 export default defineConfig({
   base: "/player/",
-  plugins: [preact()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": fromConfig("src/"),

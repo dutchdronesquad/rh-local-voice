@@ -16,7 +16,7 @@ Important modules:
   - `services/lap_callouts.py`: lap callout segment planning and reusable segment lists for pre-cache.
   - `services/precache.py`: manual pre-cache rebuild orchestration, stale-job cancellation, cleanup, and completion notifications.
   - `services/schedule.py`: scheduled-race countdown timers.
-- `player/`: Vite/Preact source for the browser player; production output is written to `custom_plugins/local_voice/player/`.
+- `sendspin_player/`: Vite/React/shadcn source for the browser player; production output is written to `custom_plugins/local_voice/player/`.
 
 ## Runtime Behavior
 
@@ -76,13 +76,12 @@ Useful checks:
 - `uv run ruff format --check .`
 - `uv run prek run --all-files`
 
-The browser player source lives in `player/`:
+The browser player source lives in `sendspin_player/`:
 
-- `npm run check`
 - `npm run lint`
 - `npm run build`
 
-`npm run build` writes production files into `custom_plugins/local_voice/player/`. The release workflow builds the player and zips `custom_plugins` as `local_voice.zip`.
+`npm run build` runs the TypeScript build and writes production files into `custom_plugins/local_voice/player/`. The release workflow builds the player and zips `custom_plugins` as `local_voice.zip`.
 
 ## Documentation Style
 

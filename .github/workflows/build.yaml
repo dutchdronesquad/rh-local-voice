@@ -7,7 +7,7 @@ on:
       - .github/workflows/build.yaml
       - .dockerignore
       - Dockerfile
-      - player/**
+      - sendspin_player/**
       - sendspin_service/**
       - tools/build_sendspin_service_deb.py
       - packaging/**

@@ -51,7 +51,7 @@ Server-side voice callouts for the [RotorHazard] timing platform, powered by [Pi
 - 🎙️ **Local TTS**: Generates voice callouts with [Piper TTS] entirely on-device.
 - 📡 **Sendspin service playback**: Sends generated WAV files to a local service that streams PCM audio to connected Sendspin clients over WebSocket, including [WindowsSpin].
 - 🌐 **Browser player**: A built-in RotorHazard plugin player at `/player` that connects to the Sendspin service.
-- 🐳 **Container**: A Docker image is available for container/cloud deployments, including the browser player at `/player`.
+- 🐳 **Container**: A Docker image is available for container/cloud deployments, including the browser player at `/`.
 - 🎛️ **Configurable voice**: Adjustable speech speed, noise scale, and phoneme width from the RotorHazard settings panel.
 - ⚡ **Smart caching**: Reusable pilot-name and lap-number segments are cached separately; use **Rebuild pre-cache** after startup or voice model/settings changes to prepare them ahead of racing.
 
@@ -100,7 +100,13 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup inst
 
 ## Credits
 
-The bundled audio check track is:
+Local Voice uses [Sendspin] for synchronized network audio playback. Sendspin
+and the browser SDK are Open Home Foundation projects; see
+[sendspin-audio.com](https://www.sendspin-audio.com/) and
+[openhomefoundation.org](https://www.openhomefoundation.org/).
+
+The RotorHazard **Play audio check** button uses a bundled demo WAV so playback
+can be tested without generating TTS first. That check clip is:
 
 - Music track: Foreign by Moavii
 - Source: <https://freetouse.com/music>

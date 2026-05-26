@@ -1,8 +1,8 @@
 # Sendspin Browser Player
 
 This is the React/shadcn browser player for Local Voice. It connects to a
-Sendspin server with `@sendspin/sendspin-js` and is served at `/player` by the
-RotorHazard plugin or the standalone Sendspin service container.
+Sendspin server with `@sendspin/sendspin-js`. The standalone Sendspin service
+serves it at `/`; the RotorHazard plugin serves its plugin build at `/player`.
 
 The source app lives in this directory, but production assets are written to:
 
@@ -10,9 +10,9 @@ The source app lives in this directory, but production assets are written to:
 ../custom_plugins/local_voice/player/
 ```
 
-That output path is intentional. The plugin ZIP and Docker image both serve the
-built files from `custom_plugins/local_voice/player/` while keeping the editable
-frontend source in `sendspin_player/`.
+That output path is intentional. The plugin ZIP and Docker image both copy or
+serve the built files from `custom_plugins/local_voice/player/` while keeping
+the editable frontend source in `sendspin_player/`.
 
 ## Development
 
@@ -33,16 +33,29 @@ Run checks:
 ```bash
 npm run lint
 npm run build
+npm run build:plugin
 ```
 
-`npm run build` runs the TypeScript build and writes the production player files
-to `custom_plugins/local_voice/player/`.
+`npm run build` builds for root hosting (`/`), which is the standalone
+Docker/cloud service default. `npm run build:plugin` builds for RotorHazard's
+`/player/` route. Both commands run the TypeScript build and write the
+production player files to `custom_plugins/local_voice/player/`.
 
 ## Runtime Notes
 
-- The app is a single page served under `/player`.
-- Vite's `base` is `/player/` so assets resolve correctly from the plugin and
-  container routes.
+- The app is a single page. Standalone service deployments serve it at `/`;
+  RotorHazard plugin deployments serve it at `/player`.
+- Vite's `base` defaults to `/`. Use `VITE_PLAYER_BASE=/player/` for the
+  RotorHazard plugin build.
 - Sendspin connection, buffering, sync correction, and reconnect behavior are
   owned by `@sendspin/sendspin-js`; this app only presents the player UI and
   user controls.
+- The Server URL control can connect this player to another Sendspin server,
+  including the public `https://sendspin-demo.openhomefoundation.org` demo.
+
+## Credits
+
+This player UI is a Local Voice wrapper around Sendspin. Sendspin and the
+browser SDK are Open Home Foundation projects; see
+[sendspin-audio.com](https://www.sendspin-audio.com/) and
+[openhomefoundation.org](https://www.openhomefoundation.org/).

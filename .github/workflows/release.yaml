@@ -26,7 +26,7 @@ jobs:
         run: npm ci
         working-directory: sendspin_player
       - name: 🚀 Build player
-        run: npm run build
+        run: npm run build:plugin
         working-directory: sendspin_player
       - name: 📦 Package plugin
         run: zip -r local_voice.zip custom_plugins

@@ -1,6 +1,14 @@
 import { SendspinPlayer } from "@sendspin/sendspin-js";
 import type { CorrectionMode, GroupUpdatePayload, ServerStatePayload, StreamFormat } from "@sendspin/sendspin-js";
-import { ChevronRightIcon, PlayIcon, Share2Icon, Volume2Icon, VolumeXIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  FlaskConicalIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  Share2Icon,
+  Volume2Icon,
+  VolumeXIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -9,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { QrCodeSvg } from "@/components/qr-code-svg";
 import { StatusRing } from "@/components/status-ring";
 import type { ConnectionState } from "@/components/status-ring";
@@ -21,6 +30,7 @@ const STORE_VOLUME = "localVoice.player.volume";
 const STORE_MUTED = "localVoice.player.muted";
 const STORE_MODE = "localVoice.player.correctionMode";
 const STORE_PLAYER_ID = "localVoice.player.id";
+const SENDSPIN_DEMO_URL = "https://sendspin-demo.openhomefoundation.org";
 const DEFAULT_VOLUME = 80;
 const DEFAULT_CORRECTION_MODE: CorrectionMode = "sync";
 const CODECS = ["pcm"] as const;
@@ -95,8 +105,8 @@ type DetailLogState = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function defaultBaseUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "https:" : "http:";
-  return `${protocol}//${window.location.hostname}:8927`;
+  if (window.location.protocol === "https:") return window.location.origin;
+  return `http://${window.location.hostname}:8927`;
 }
 
 function normalizeBaseUrl(input: string): string {
@@ -170,10 +180,12 @@ function bucket(value: number | null, size: number): number | null {
 }
 
 function playerPageUrl(): string {
-  const url = new URL(window.location.href);
+  const url = new URL(import.meta.env.BASE_URL, window.location.origin);
   url.search = "";
   url.hash = "";
-  url.pathname = url.pathname.replace(/\/player(?:\/.*)?$/i, "/player");
+  if (url.pathname !== "/") {
+    url.pathname = url.pathname.replace(/\/+$/, "");
+  }
   return url.toString();
 }
 
@@ -231,8 +243,8 @@ export function App() {
     trackLabel: null,
   });
 
-  const playerId = useMemo(getOrCreatePlayerId, []);
-  const shareUrl = useMemo(playerPageUrl, []);
+  const playerId = useMemo(() => getOrCreatePlayerId(), []);
+  const shareUrl = useMemo(() => playerPageUrl(), []);
 
   function addLog(message: string, kind: LogEntry["kind"] = "info") {
     setLogs((current) => [...current, { id: ++logIdRef.current, kind, message }].slice(-80));
@@ -419,6 +431,19 @@ export function App() {
     setServerOpen(true);
     setSnapshot((current) => ({ ...current, isConnected: false, isPlaying: false, format: null, timeSynced: false }));
     addLog("Disconnected", "warn");
+  }
+
+  function resetServerUrl() {
+    const nextUrl = defaultBaseUrl();
+    setBaseUrl(nextUrl);
+    window.localStorage.removeItem(STORE_SERVER_URL);
+    addLog(`Server URL reset to ${nextUrl}`);
+  }
+
+  function useDemoServerUrl() {
+    setBaseUrl(SENDSPIN_DEMO_URL);
+    window.localStorage.setItem(STORE_SERVER_URL, SENDSPIN_DEMO_URL);
+    addLog("Server URL set to Sendspin demo");
   }
 
   function updateVolume(value: number) {
@@ -623,6 +648,40 @@ export function App() {
                 className="h-9 bg-card font-mono text-[0.78rem] disabled:opacity-60"
                 onChange={(e) => setBaseUrl(e.target.value)}
               />
+              <div className="mt-2 flex items-center justify-end gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="h-6 px-2 text-[0.68rem] text-muted-foreground hover:text-foreground"
+                    disabled={connected}
+                    aria-label="Use default server URL"
+                    onClick={resetServerUrl}
+                  >
+                    <RotateCcwIcon className="size-3" />
+                    Default
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Use default server URL</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="h-6 px-2 text-[0.68rem] text-muted-foreground hover:text-foreground"
+                    disabled={connected}
+                    aria-label="Use Sendspin demo server"
+                    onClick={useDemoServerUrl}
+                  >
+                    <FlaskConicalIcon className="size-3" />
+                    Demo
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Use Sendspin demo server</TooltipContent>
+              </Tooltip>
+              </div>
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -740,7 +799,7 @@ export function App() {
 
         {/* Footer */}
         <footer className="border-t border-border bg-background/60 px-5 py-[0.55rem] text-center text-[0.68rem] text-muted-foreground/70">
-          Streaming by{" "}
+          Powered by{" "}
           <a
             href="https://www.sendspin-audio.com/"
             target="_blank"
@@ -748,6 +807,15 @@ export function App() {
             className="font-semibold text-primary hover:underline"
           >
             Sendspin
+          </a>
+          {" "}and{" "}
+          <a
+            href="https://www.openhomefoundation.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-primary hover:underline"
+          >
+            Open Home Foundation
           </a>
         </footer>
       </section>

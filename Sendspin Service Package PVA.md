@@ -353,7 +353,15 @@ ghcr.io/<owner>/sendspin-service:0.1.0
 
 Docker is the primary deployment format for cloud Sendspin targets. The local Pi path stays `.deb` + systemd.
 
-Unlike the local `.deb`, the Docker/cloud service includes a service-owned player frontend. That player is currently built from the existing Vite/Preact player and served by the container at `/player`; it should later evolve toward remote/QR use without forcing the local RotorHazard plugin to give up its operator-facing `/player` route.
+Unlike the local `.deb`, the Docker/cloud service includes a service-owned
+player frontend served by the container at `/player`. It should evolve toward
+remote/QR use without forcing the local RotorHazard plugin to give up its
+operator-facing `/player` route.
+
+Current frontend direction: the standalone player has moved to the root-level
+`sendspin_player/` Vite/React/shadcn app. Docker, CI/release workflows, and
+developer documentation now use the new path. The remaining cleanup is to remove
+the old `player/` source directory after the new path is confirmed end to end.
 
 Current Docker image scope:
 
@@ -401,13 +409,16 @@ Keep the local and cloud API shared where practical:
 - `POST /v1/play`
 - `POST /v1/stop`
 
-For the local package, the HTTP ingest API remains localhost-only. Cloud deployments need their own auth model instead of relying on loopback checks.
+For the local package, the HTTP ingest API remains localhost-only by default.
+Cloud deployments use the same optional `SENDSPIN_API_TOKEN` bearer auth as the
+service API. RotorHazard stores separate local and cloud API token settings and
+adds `Authorization: Bearer <token>` when configured.
 
 But keep deployment concerns separate:
 
 - `.deb`/systemd for local Pi/Ubuntu installs
 - Docker/GHCR for cloud and container deployments
-- plugin fan-out later for local + cloud output in parallel
+- plugin fan-out for local + cloud output in parallel
 
 ## Cloud Target And QR Flow
 
@@ -415,20 +426,20 @@ Goal: allow remote listeners to join with a QR code while local PA playback rema
 
 Player frontend direction:
 
-- Keep the current Preact player until the Docker/cloud path is merged and stable.
-- After that, migrate the standalone player frontend to React + Tailwind + shadcn/Radix-style components.
+- Use React + Tailwind + shadcn/Radix components for the standalone player.
 - Use shadcn/Radix for the share dialog/drawer and future player UI primitives instead of hand-rolling every interaction.
 - Accept the moderate bundle-size increase because the Docker/cloud player benefits more from polished accessibility, focus handling, and reusable UI components than from staying minimal at all costs.
-- Do the migration cleanly rather than forcing shadcn/Radix through Preact compatibility.
+- Keep custom CSS limited to theme/base and player-specific visuals such as the status-ring animation.
 
 Plugin checklist:
 
-- [ ] Add optional cloud output enable setting.
-- [ ] Add cloud URL/token/event config.
-- [ ] Send local and cloud outputs independently.
+- [x] Add fixed Local and Cloud target slots without per-target enable toggles.
+- [x] Add cloud URL/token config.
+- [x] Add target dropdown: Local / Cloud / Local + Cloud.
+- [x] Send local and cloud outputs independently.
 - [ ] Keep local timeout short and priority high.
 - [ ] Ensure cloud failure never blocks local playback.
-- [ ] Fan out stop commands to enabled targets.
+- [x] Fan out stop commands to selected targets.
 
 Cloud service checklist:
 

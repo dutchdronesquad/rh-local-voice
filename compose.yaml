@@ -1,7 +1,10 @@
 ---
 services:
   sendspin-service:
-    image: ghcr.io/dutchdronesquad/sendspin-service:latest
+    # image: ghcr.io/dutchdronesquad/sendspin-service:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     init: true
     restart: unless-stopped
     environment:

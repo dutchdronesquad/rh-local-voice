@@ -4,7 +4,7 @@
 !README.md
 !pyproject.toml
 !uv.lock
-!player/
-!player/**
+!sendspin_player/
+!sendspin_player/**
 !sendspin_service/
 !sendspin_service/**

@@ -220,15 +220,23 @@ The Sendspin player can run on any device with an audio output: Intel NUC, lapto
 
 ### Browser player: current implementation
 
-The browser player is a Vite / Preact / TypeScript app in the root-level `player/` directory. It uses the official `@sendspin/sendspin-js` SDK for playback instead of maintaining custom WebAudio timing, buffering, correction, and reconnect logic in a hand-written HTML file.
+The browser player is a Vite / React / TypeScript app using shadcn/Radix UI
+components and the official `@sendspin/sendspin-js` SDK. The player should not
+own WebAudio timing, buffering, correction, reconnect logic, or Sendspin
+protocol details; those remain SDK responsibilities.
 
-The frontend build writes the production assets into `custom_plugins/local_voice/player/`, so the RotorHazard plugin can serve `/player` from the same plugin ZIP. The local `.deb` service stays headless; a future Docker/cloud service can bundle its own player frontend when that deployment path needs QR/session flows.
+Current source ownership has moved from the old root-level `player/` app to the
+new `sendspin_player/` app. Build, Docker, release, and developer documentation
+now point at the new directory. The final cleanup step is to remove the old
+`player/` source directory once the migration branch is stable. Production assets
+still build into `custom_plugins/local_voice/player/` so the RotorHazard plugin
+can serve `/player` from the plugin ZIP.
 
 #### Source and build output
 
 ```text
 rh-local-voice/
-  player/                         # Vite/Preact source app
+  sendspin_player/                 # Vite/React/shadcn source app
     package.json
     package-lock.json
     vite.config.ts
@@ -236,7 +244,7 @@ rh-local-voice/
     index.html
     src/
       index.tsx
-      style.css
+      index.css
   custom_plugins/local_voice/player/
     index.html                    # generated during plugin release build
     assets/...                    # generated during plugin release build
@@ -244,12 +252,18 @@ rh-local-voice/
 
 #### Current design
 
-- Vite + Preact + TypeScript.
+- Vite + React + TypeScript.
+- shadcn/Radix components for buttons, dialogs, fields, selects, sliders, and collapsible sections.
 - Router: **No**. The app is a single runtime page served at `/player`; routing adds no value.
 - Prerender / SSG: **No**. The app depends on WebSocket, WebAudio, user gestures, and runtime Sendspin state.
 - ESLint: **Yes**. Realtime audio and connection-state code benefits from catching simple mistakes early.
 - Build output: `custom_plugins/local_voice/player/`.
 - Plugin route: `GET /player` returns the built `index.html`; static assets are served from the same directory.
+
+Design note: use real shadcn/Radix primitives, not local lookalike component
+classes. Custom CSS should be limited to the shadcn theme tokens, base styles,
+and player-specific visuals that are not generic UI controls, such as the
+status-ring animation and QR code sizing.
 
 #### Runtime dependency
 
@@ -322,7 +336,8 @@ Ownership note: the RotorHazard plugin owns the local browser player because it 
 
 #### Validation checklist
 
-- [x] `npm run check` passes in `player/`.
+- [x] `npm run check` passes in the current player app.
+- [x] `npm run lint` passes in the current player app.
 - [x] `npm run build` emits `custom_plugins/local_voice/player/index.html` and assets.
 - [x] RotorHazard plugin serves `/player` and static player assets.
 - [x] Hard refresh / clean localStorage computes a usable default URL from the current host.
@@ -331,6 +346,8 @@ Ownership note: the RotorHazard plugin owns the local browser player because it 
 - [x] Stop button clears playback on native and browser players.
 - [x] MacBook/browser hiccup does not create persistent delay after recovery.
 - [x] Reconnect after Sendspin server restart works without page refresh.
+- [x] Retire old `player/` source path from Docker, CI/release workflows, and developer docs.
+- [ ] Remove old root-level `player/` source directory after the new player path is confirmed in release.
 
 ### Known Sendspin risks to validate before race day
 
@@ -357,7 +374,7 @@ RotorHazard server
         └── Sendspin output
               Local: HTTP client → local Sendspin service
               Cloud: HTTP client → cloud Sendspin service
-              Fan-out: local + cloud targets in parallel (planned)
+              Fan-out: target dropdown selects local, cloud, or both
 ```
 
 Updated Sendspin output direction:
@@ -365,9 +382,13 @@ Updated Sendspin output direction:
 - The plugin should only dispatch WAV playback jobs over HTTP.
 - The local Sendspin service owns `aiosendspin`, player connections, and stream state.
 - The detailed package/build/deploy plan is tracked in `Sendspin Service Package PVA.md`.
-- Later cloud output should fan out independently from the local service path.
+- Cloud output uses the same service API and can run alone or in parallel with
+  the local target.
 
-The audio queue should remain unchanged: it still owns priority, expiry, and single-worker ordering. Output fan-out happens behind the queue worker. The queue worker may wait for short output calls, but one slow target must not block another target. Remote outputs therefore need per-target timeouts and failure isolation.
+The audio queue should remain unchanged: it still owns priority, expiry, and
+single-worker ordering. Output fan-out happens behind the queue worker. Each
+target is attempted independently with the configured request timeout; failure
+on one target is logged and does not prevent attempts to other selected targets.
 
 The local Sendspin service should expose a minimal ingest API:
 
@@ -428,6 +449,9 @@ Implemented:
 - Enable plugin audio: on/off
 - Voice model selector: 12 models across English, Dutch, and German
 - Speech speed, noise scale, phoneme width noise
+- Sendspin target dropdown: Local / Cloud / Local + Cloud
+- Local Sendspin URL and optional API token
+- Cloud Sendspin URL and optional API token
 - Test phrase field and quick button
 - Play audio check quick button
 - Stop audio quick button
@@ -447,9 +471,9 @@ Known issues / deferred fixes:
 Post-MVP planned / not implemented yet:
 - TTS engine selector: piper-tts / Wyoming Piper / disabled
 - Wyoming Piper host and port
-- Sendspin output targets:
-  - Local Sendspin service URL / timeout / health status
-  - Cloud Sendspin service: enabled / URL / token / health status
+- Sendspin output target health/status display:
+  - Local Sendspin service health status
+  - Cloud Sendspin service health status
 - Sendspin server target timeouts:
   - Local service timeout: short default, e.g. 2-5 seconds
   - Cloud service timeout: longer default, e.g. 3-5 seconds
@@ -569,12 +593,15 @@ Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyo
 
 #### Browser player rewrite
 - [x] Browser player served at `/player`
-- [x] Root-level `player/` Vite/Preact app scaffolded
+- [x] Original root-level `player/` Vite/Preact app scaffolded
 - [x] Add `@sendspin/sendspin-js` to the root-level player app
 - [x] Configure Vite build output to `custom_plugins/local_voice/player` for plugin release packaging
 - [x] Replace template UI with `SendspinPlayer`-based app
 - [x] Add compact diagnostics for sync drift, correction mode, reconnects, and player state
 - [x] Browser player is served by the RotorHazard plugin; live connection state is owned by the browser player UI, not the RotorHazard settings panel
+- [x] Standalone player migration started in `sendspin_player/` with React, Tailwind, shadcn/Radix, and the existing Sendspin SDK contract
+- [x] Retire the old root-level `player/` source path from workflows and developer docs
+- [ ] Remove the old root-level `player/` source directory after release validation
 
 **Success criteria:**
 - [x] "Test phrase" plays audibly through the browser player on a remote device
@@ -641,7 +668,9 @@ server fallback. The first service API smoke test has passed for `/health`,
 - [x] Provide `sendspin.service` systemd unit file with the repo
 - [x] Remove plugin setting: Sendspin local mode (Internal server / External server / Disabled)
 - [x] Remove internal Sendspin hidden/legacy fallback
-- [x] Plugin setting: Sendspin service URL (default: `http://127.0.0.1:8766`)
+- [x] Plugin setting: Local Sendspin URL (default: `http://127.0.0.1:8766`)
+- [x] Plugin setting: Local Sendspin API token (optional)
+- [x] Plugin setting: Sendspin target dropdown (Local / Cloud / Local + Cloud)
 - [ ] Optional plugin health/status display without adding a separate debug-style quick button
 - [ ] Add a service API compatibility field and plugin-side handling only when the service API gets a breaking change
 - [x] Local service works as a self-contained `.deb` package on amd64
@@ -650,20 +679,22 @@ server fallback. The first service API smoke test has passed for `/health`,
 - [x] Document service package install, upgrade, status, logs, remove, and purge
 
 #### Cloud Sendspin target
-- [ ] Plugin setting: Cloud Sendspin server enabled/disabled
-- [ ] Plugin setting: Cloud Sendspin server URL
-- [ ] Plugin setting: Cloud ingest token / API key
-- [ ] `RemoteSendspinOutput` sends WAV jobs to cloud service using HTTPS
-- [ ] Cloud target can run alone for small events without a PA
-- [ ] Cloud target can run alongside local service for PA + spectator phone feed
-- [ ] Cloud failures do not block local output and are shown as target-specific warnings
-- [ ] No change required to the audio queue or TTS pipeline
+- [x] Plugin setting: Cloud Sendspin URL
+- [x] Plugin setting: Cloud Sendspin API token (optional bearer token)
+- [x] Plugin target dropdown supports Cloud-only output
+- [x] Plugin target dropdown supports Local + Cloud fan-out
+- [x] `SendspinServiceClient` sends WAV jobs to selected targets over HTTP(S)
+- [x] Cloud target can run alone for small events without a PA
+- [x] Cloud target can run alongside local service for PA + spectator phone feed
+- [x] Cloud failures are target-specific log errors and do not prevent attempts to other selected targets
+- [x] No change required to the audio queue or TTS pipeline
+- [ ] Per-target health/status display in the RotorHazard panel
 
 #### Cloud Docker deployment
 - [x] Add Dockerfile for the Sendspin server under `sendspin_service/`
-- [ ] Add documented environment variables: ingest token, HTTP port, Sendspin listen port, public base URL
-- [ ] Container exposes the Sendspin player endpoint and HTTP ingest endpoint
-- [ ] Document reverse-proxy/TLS expectation for public deployments
+- [x] Add documented environment variables: ingest token, HTTP port, Sendspin listen port, public base URL
+- [x] Container exposes the Sendspin player endpoint and HTTP ingest endpoint
+- [x] Document reverse-proxy/TLS expectation for public deployments
 - [ ] Document a minimal VPS deployment path
 
 #### QR code for spectator/pilot feed

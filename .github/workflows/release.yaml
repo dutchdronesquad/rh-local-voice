@@ -101,7 +101,7 @@ jobs:
             type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
             type=sha,prefix=sha-
       - name: 🏗 Build and publish Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.19.2
         with:
           context: .
           file: Dockerfile

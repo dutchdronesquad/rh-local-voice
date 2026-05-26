@@ -8,7 +8,7 @@ function fromConfig(relativePath: string): string {
 }
 
 export default defineConfig({
-  base: "/player/",
+  base: process.env.VITE_PLAYER_BASE ?? "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

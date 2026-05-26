@@ -24,10 +24,9 @@ def add_player_routes(app: web.Application, player_dir: Path | None) -> None:
         return
 
     app[_PLAYER_INDEX_KEY] = index_path
-    app.router.add_get("/player", _player_index)
-    app.router.add_get("/player/", _player_index)
-    app.router.add_static("/player/", player_dir, show_index=False)
-    logger.info("Sendspin service player available at /player")
+    app.router.add_get("/", _player_index)
+    app.router.add_static("/", player_dir, show_index=False)
+    logger.info("Sendspin service player available at /")
 
 
 async def _player_index(request: web.Request) -> web.FileResponse:

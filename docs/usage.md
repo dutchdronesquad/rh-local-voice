@@ -68,6 +68,7 @@ docker compose up -d
 ```
 
 The included Compose file builds the local Dockerfile by default. To run the published image instead, replace the `build:` block with `image: ghcr.io/dutchdronesquad/sendspin-service:latest`.
+Container runtime settings are read from `.env`; the checked-in `.env.example` contains the default host, port, advertise, body-size, player-dir, and API-token settings.
 
 The container serves the browser player at `http://<container-host>:8766/`. The HTTP ingest API is on the same port under `/v1`, and the health check is available at `/health`. Browser clients connect to the Sendspin WebSocket endpoint on port `8927` at `/sendspin`.
 

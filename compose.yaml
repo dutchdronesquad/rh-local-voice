@@ -17,5 +17,5 @@ services:
       SENDSPIN_PLAYER_DIR: "${SENDSPIN_PLAYER_DIR:-/opt/sendspin-service/player}"
       SENDSPIN_API_TOKEN: "${SENDSPIN_API_TOKEN:-}"
     ports:
-      - "8766:8766"
-      - "8927:8927"
+      - "${SENDSPIN_INGEST_PORT:-8766}:${SENDSPIN_INGEST_PORT:-8766}"
+      - "${SENDSPIN_PORT:-8927}:${SENDSPIN_PORT:-8927}"

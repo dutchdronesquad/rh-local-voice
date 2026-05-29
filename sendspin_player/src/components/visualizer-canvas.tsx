@@ -22,18 +22,17 @@ export function VisualizerCanvas({ analyserRef, playing }: Props) {
     if (!ctx) return;
 
     function resize() {
-      if (!canvas) return;
-      canvas.width  = canvas.offsetWidth  * devicePixelRatio;
-      canvas.height = canvas.offsetHeight * devicePixelRatio;
+      canvas!.width  = canvas!.offsetWidth  * devicePixelRatio;
+      canvas!.height = canvas!.offsetHeight * devicePixelRatio;
     }
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
     resize();
 
-    let cr = 96, cg = 165, cb = 250;
+    let cr = 96, cg = 165, cb = 250; // fallback: navy dark-mode value
     function updateColor() {
       const m = getComputedStyle(colorEl!).color.match(/\d+/g);
-      if (m?.length && m.length >= 3) { cr = +m[0]; cg = +m[1]; cb = +m[2]; }
+      if (m && m.length >= 3) { cr = +m[0]; cg = +m[1]; cb = +m[2]; }
     }
     updateColor();
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -41,6 +40,10 @@ export function VisualizerCanvas({ analyserRef, playing }: Props) {
 
     const freqData = new Uint8Array(64);
     const decay    = decayRef.current;
+
+    function rgba(alpha: number) {
+      return `rgba(${cr},${cg},${cb},${alpha.toFixed(3)})`;
+    }
 
     function draw() {
       const analyser = analyserRef.current;
@@ -60,7 +63,7 @@ export function VisualizerCanvas({ analyserRef, playing }: Props) {
           if (decay[i] > 0.005) { decay[i] *= 0.93; any = true; }
           else decay[i] = 0;
         }
-        if (!any) return; // nothing left to draw — loop stops, useEffect restarts on next play
+        if (!any && !playing) return;
       }
 
       const dpr    = devicePixelRatio;
@@ -76,11 +79,10 @@ export function VisualizerCanvas({ analyserRef, playing }: Props) {
         const x    = i * (barW + gap);
         const barY = h - barH;
 
-        // Fade from transparent at top to solid at bottom
         const grad = ctx!.createLinearGradient(0, barY, 0, h);
-        grad.addColorStop(0,    `rgba(${cr},${cg},${cb},0)`);
-        grad.addColorStop(0.35, `rgba(${cr},${cg},${cb},${+(v * 0.22).toFixed(3)})`);
-        grad.addColorStop(1,    `rgba(${cr},${cg},${cb},${+(v * 0.45).toFixed(3)})`);
+        grad.addColorStop(0,    rgba(0));
+        grad.addColorStop(0.35, rgba(v * 0.22));
+        grad.addColorStop(1,    rgba(v * 0.45));
 
         ctx!.fillStyle = grad;
         ctx!.beginPath();

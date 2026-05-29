@@ -70,7 +70,6 @@ type PlayerSnapshot = {
   volume: number;
   muted: boolean;
   playerState: string;
-  groupState?: string;
   format: StreamFormat | null;
   syncErrorMs: number | null;
   outputLatencyMs: number | null;
@@ -273,7 +272,6 @@ export function App() {
       volume: player.volume,
       muted: player.muted,
       playerState: player.playerState,
-      groupState: player.playerState,
       format: player.currentFormat,
       syncErrorMs: syncInfo.syncErrorMs,
       outputLatencyMs: syncInfo.outputLatencyMs,

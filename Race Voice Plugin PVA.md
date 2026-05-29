@@ -41,6 +41,23 @@ Consequence: **duplicate prevention is operational**, not automatic. The operato
 
 ---
 
+## Audio Level Strategy
+
+Local Voice has two different volume layers:
+
+- **Browser player volume:** local master output for that one player/browser. This is useful for per-device adjustment and remains optional.
+- **Plugin category volume:** server-side mix level before audio is streamed to Sendspin. This should be used to balance generated voice against tones/beeps globally.
+
+The plugin should keep cached WAV files at full generated level and apply volume only at playback time. This avoids cache rebuilds when a user changes volume settings.
+
+Current implementation target:
+
+- Add **Voice volume** first and apply it to all Piper TTS callouts.
+- Keep the audio queue and Sendspin adapter generic by passing a per-job volume value.
+- Add **Tone volume** later when tone/static WAV support lands on this branch; tone jobs can use the same per-job volume path.
+
+---
+
 ## Missing RH Features (Post-MVP wishlist for upstream)
 
 Things that would make the plugin significantly easier or more capable, but don't exist in RotorHazard today. These are explicitly **Post-MVP** items: they are not required for Phase 2 or Phase 3 completion. Each item includes the ideal upstream fix and the current workaround.
@@ -433,7 +450,8 @@ MVP plugin audio profile mirrors the familiar RH categories that can be implemen
 - Pilot callsign, lap number, lap time on/off
 - Winner and pilot-finished callouts
 - Crossing enter/exit beeps
-- Voice volume, beep volume, speech speed, voice model
+- Voice volume, speech speed, voice model
+- Tone volume once tone/static WAV support lands
 
 Post-MVP profile additions:
 - Race clock callouts
@@ -453,6 +471,7 @@ Implemented:
 - Local Sendspin URL and optional API token
 - Cloud Sendspin URL and optional API token
 - Test phrase field and quick button
+- Voice volume slider for Piper TTS playback level
 - Play audio check quick button
 - Stop audio quick button
 - Clear TTS cache quick button
@@ -461,7 +480,7 @@ Implemented:
 
 MVP planned / not implemented yet:
 - Announcement options per component: Pilot Callsign, Pilot Lap Number, Pilot Lap Time — each selectable as Never / Always / Only on Non-Team/Non-Co-op Races. Use Python enums for option values.
-- Output volume and beep volume in the plugin panel
+- Tone volume in the plugin panel after tone/static WAV support lands
 - Pre-generate on heat load: on/off
 
 Known issues / deferred fixes:
@@ -545,12 +564,13 @@ Deferred RHAPI-dependent features, external/cloud Sendspin output, QR codes, Wyo
 
 #### Async audio queue
 - [x] Single `queue.PriorityQueue` with a dedicated daemon worker thread (`audio_queue.py`)
-- [x] `AudioJob` dataclass: `text`, `wav_paths`, `priority`, `expires_at`
+- [x] `AudioJob` dataclass: `text`, `wav_paths`, `priority`, `expires_at`, `volume`
 - [x] Priority levels: `HIGH` (race start / winner / interrupt) > `NORMAL` (lap callout) > `LOW` (beep)
 - [x] Expiry: drop jobs where `time.monotonic() > expires_at` (default: 5 seconds)
 - [x] Lap callouts use a 10-second expiry to tolerate multiple pilots crossing together while still dropping stale audio
 - [x] Single worker draining the queue in priority order; expired jobs dropped and logged
 - [x] Sendspin appends queued WAVs to the active stream; normal lap callouts do not intentionally stop/reset current playback
+- [x] Per-job volume is applied at Sendspin playback time so cache files do not need regeneration when volume changes
 
 #### Audio profile settings
 - [x] All implemented toggles exposed in plugin settings panel

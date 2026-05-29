@@ -16,6 +16,7 @@ from .const import (
     DEFAULT_SENDSPIN_SERVICE_URL,
     DEFAULT_SPEED,
     DEFAULT_TEST_PHRASE,
+    DEFAULT_VOICE_VOLUME,
     ENABLE_OPTION,
     NOISE_SCALE_OPTION,
     NOISE_W_SCALE_OPTION,
@@ -26,6 +27,7 @@ from .const import (
     TEST_PHRASE_OPTION,
     VOICE_MODEL_OPTION,
     VOICE_MODELS,
+    VOICE_VOLUME_OPTION,
 )
 
 _PLAYER_DIR = Path(__file__).parent / "player"
@@ -74,6 +76,23 @@ def register_ui(  # noqa: PLR0913
         ),
         panel=PANEL_ID,
     )
+    rhapi.fields.register_option(
+        UIField(
+            VOICE_VOLUME_OPTION,
+            "Voice volume",
+            UIFieldType.RANGE,
+            value=DEFAULT_VOICE_VOLUME,
+            desc="Server-side Piper voice level; does not affect static audio checks.",
+            html_attributes={
+                "min": "0",
+                "max": "100",
+                "step": "1",
+                "value_suffix": "%",
+            },
+        ),
+        panel=PANEL_ID,
+    )
+
     rhapi.fields.register_option(
         UIField(
             VOICE_MODEL_OPTION,

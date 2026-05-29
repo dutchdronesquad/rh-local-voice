@@ -65,7 +65,7 @@ Both the plugin and the service use a single worker queue to keep event callback
 |----------|----------|
 | HIGH     | Winner announcements, manual test phrase, audio check, scheduled-race countdowns |
 | NORMAL   | Lap callouts |
-| LOW      | Reserved |
+| LOW      | Crossing beeps (earmarked, not yet used by the current plugin) |
 
 Expired jobs are dropped before playback starts. This avoids playing stale lap callouts after a busy event burst.
 

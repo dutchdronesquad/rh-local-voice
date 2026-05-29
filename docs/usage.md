@@ -91,28 +91,10 @@ The image does not include the RotorHazard plugin. The bundled player is for dir
 Manual playback test:
 
 ```shell
-python - <<'PY'
-import base64
-import json
-import urllib.request
-
-wav_data = base64.b64encode(
-    open("custom_plugins/race_voice/assets/moavii-foreign.wav", "rb").read()
-).decode("ascii")
-payload = json.dumps({
-    "text": "audio check",
-    "wav_files": [{"name": "moavii-foreign.wav", "data": wav_data}],
-    "priority": "high",
-    "volume": 1.0,
-}).encode("utf-8")
-request = urllib.request.Request(
-    "http://127.0.0.1:8766/v1/play",
-    data=payload,
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-print(urllib.request.urlopen(request).read().decode("utf-8"))
-PY
+WAV=$(base64 -w0 custom_plugins/race_voice/assets/moavii-foreign.wav)
+curl -s -X POST http://127.0.0.1:8766/v1/play \
+  -H "Content-Type: application/json" \
+  -d "{\"wav_files\":[{\"name\":\"test.wav\",\"data\":\"$WAV\"}],\"priority\":\"high\",\"volume\":1.0}"
 ```
 
 ## Package Build
@@ -149,16 +131,76 @@ Package CI:
 - Published GitHub Releases build and upload both `amd64` and `arm64` `.deb` assets through `.github/workflows/release.yaml`.
 - The shared build logic lives in `.github/actions/build-sendspin-deb/action.yaml`.
 
+## Callouts
+
+Race Voice hooks into two RotorHazard filter events and generates the following callouts automatically while plugin audio is enabled:
+
+| Event | Callout | Priority |
+|---|---|---|
+| Pilot completes a lap | `"{callsign}, Lap {n}, {m:ss.f}"` | Normal |
+| Race winner announced | `"Winner is {callsign}!"` (or localized equivalent) | High |
+| Scheduled race countdown | `"Race begin in 60 seconds"` / `"30"` / `"10"` / `"5"` | High |
+
+Lap 0 (first crossing without a completed lap) does not produce a callout. Winner callouts are generated from the RotorHazard phonetic text filter, which fires when RotorHazard determines the race winner.
+
+Countdown callouts are generated when a race is scheduled via the RotorHazard schedule panel. They are cancelled automatically if the schedule is replaced or cancelled before the race starts.
+
+The callsign used in a lap callout is the pilot's **phonetic name** if set, otherwise the **callsign**. Set phonetic names in the RotorHazard pilot list for better pronunciation with the selected voice model.
+
+## Browser Player
+
+The Sendspin browser player connects to `sendspin-service` and plays synchronized audio. Open it at `<RotorHazard UI base URL>/player` on the playback device, or at `http://<container-host>:8766/` when using the Docker image.
+
+Multiple devices can connect simultaneously and will receive the same audio in sync.
+
+### Connecting
+
+1. Open the player URL on the playback device.
+2. Confirm the **Server URL** in the player points to the `sendspin-service` HTTP endpoint (default `http://<timingserver>:8927`).
+3. Press **Connect**. The status badge shows **Ready** when the player is connected.
+
+The player stores the server URL in the browser's local storage and reconnects automatically if the connection drops.
+
+### Sync modes
+
+| Mode | Description | Best for |
+|---|---|---|
+| **Sync** | Sample-level correction via small buffer resets | Local wired or fast Wi-Fi networks |
+| **Quality** | Gradual playback-rate adjustment | Tolerates network jitter; avoids audible resets |
+| **Quality local** | Uses device clock as reference | Offline or unreliable connections |
+
+Use **Sync** for most race-day setups. Switch to **Quality** if playback resets are audible on the local network.
+
+### Controls
+
+- **Volume / Mute**: adjusts local playback volume and mutes the output. Settings are stored per device.
+- **Share**: shows a QR code and URL for the player page. Useful for distributing the player link to spectators at the event.
+- **Diagnostics**: expands a panel with stream format, time-sync state, sync error, output latency, correction method, and playback rate. Useful for debugging sync issues.
+
+### WindowsSpin
+
+[WindowsSpin](https://github.com/sendspin/windowsspin) is a native Windows application that connects to the same Sendspin stream. Configure it with the `sendspin-service` host and port (`8927` by default). It will receive the same synchronized audio as the browser player.
+
 ## Settings
+
+### Options
 
 - **Enable plugin audio**: Turns Race Voice callout generation on or off.
 - **Sendspin service URL**: HTTP endpoint for `sendspin-service`. Default: `http://127.0.0.1:8766` when the plugin and service run on the same host.
 - **Sendspin service timeout**: HTTP timeout for queue/stop requests to `sendspin-service`.
 - **Voice model**: Piper voice model. Models are downloaded once and reused.
-- **Speech speed**: Speaking rate. `1.0` is Piper default.
-- **Noise scale**: Voice variation.
-- **Phoneme width noise**: Duration variation between phonemes.
+- **Speech speed**: Speaking rate. `1.0` is Piper default. Range: `0.5`–`2.0`.
+- **Noise scale**: Voice variation. `0.0` is monotone, `1.0` is expressive. Default: `0.667`.
+- **Phoneme width noise**: Duration variation between phonemes. `0.0` is uniform, `1.0` is varied. Default: `0.8`.
 - **Test phrase**: Phrase generated by the **Generate test phrase** button.
+
+### Quick buttons
+
+- **Generate test phrase**: Synthesizes the test phrase with the current voice settings and sends it to the Sendspin service. Use this to verify end-to-end audio before race day.
+- **Play audio check**: Plays a bundled demo WAV without synthesizing TTS. Confirms `sendspin-service` is reachable and clients receive audio even if no voice model is loaded yet.
+- **Stop audio**: Immediately stops all queued and active audio on the Sendspin service. Useful when a callout needs to be cut mid-playback.
+- **Clear TTS cache**: Removes all generated WAV files. Use after a voice model change to avoid stale audio from the previous model.
+- **Rebuild pre-cache**: Pre-generates WAV files for the current heat's pilot names, lap segments, and schedule phrases. Run this after startup or after changing voice settings so common phrases are ready before racing starts.
 
 ## Cache Layout
 

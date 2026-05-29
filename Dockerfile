@@ -2,7 +2,7 @@
 
 ARG PYTHON_VERSION=3.13
 
-FROM ghcr.io/astral-sh/uv:0.11.16 AS uv
+FROM ghcr.io/astral-sh/uv:0.11.17 AS uv
 
 FROM node:24-bookworm-slim AS player-build
 

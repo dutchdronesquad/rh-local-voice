@@ -18,18 +18,20 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { VisualizerCanvas } from "@/components/visualizer-canvas";
 import { QrCodeSvg } from "@/components/qr-code-svg";
 import { StatusRing } from "@/components/status-ring";
 import type { ConnectionState } from "@/components/status-ring";
+import { useAudioAnalyser } from "@/lib/use-audio-analyser";
 import "./index.css";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const STORE_SERVER_URL = "localVoice.player.serverUrl";
-const STORE_VOLUME = "localVoice.player.volume";
-const STORE_MUTED = "localVoice.player.muted";
-const STORE_MODE = "localVoice.player.correctionMode";
-const STORE_PLAYER_ID = "localVoice.player.id";
+const STORE_SERVER_URL = "raceVoice.player.serverUrl";
+const STORE_VOLUME = "raceVoice.player.volume";
+const STORE_MUTED = "raceVoice.player.muted";
+const STORE_MODE = "raceVoice.player.correctionMode";
+const STORE_PLAYER_ID = "raceVoice.player.id";
 const SENDSPIN_DEMO_URL = "https://sendspin-demo.openhomefoundation.org";
 const DEFAULT_VOLUME = 80;
 const DEFAULT_CORRECTION_MODE: CorrectionMode = "sync";
@@ -68,7 +70,6 @@ type PlayerSnapshot = {
   volume: number;
   muted: boolean;
   playerState: string;
-  groupState?: string;
   format: StreamFormat | null;
   syncErrorMs: number | null;
   outputLatencyMs: number | null;
@@ -245,6 +246,7 @@ export function App() {
 
   const playerId = useMemo(() => getOrCreatePlayerId(), []);
   const shareUrl = useMemo(() => playerPageUrl(), []);
+  const analyserRef = useAudioAnalyser(playerRef, state === "playing");
 
   function addLog(message: string, kind: LogEntry["kind"] = "info") {
     setLogs((current) => [...current, { id: ++logIdRef.current, kind, message }].slice(-80));
@@ -270,7 +272,6 @@ export function App() {
       volume: player.volume,
       muted: player.muted,
       playerState: player.playerState,
-      groupState: player.playerState,
       format: player.currentFormat,
       syncErrorMs: syncInfo.syncErrorMs,
       outputLatencyMs: syncInfo.outputLatencyMs,
@@ -507,48 +508,44 @@ export function App() {
 
   return (
     <main className="relative flex min-h-dvh items-start justify-center px-4 py-6 sm:items-center">
-      {/* Animated backdrop */}
+
+      {/* Backdrop blobs */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
         <div
-          className="absolute rounded-full blur-[100px] opacity-[0.32] animate-[blob-a_9s_ease-in-out_infinite_alternate]"
+          className="absolute rounded-full blur-[120px] animate-[blob-a_14s_ease-in-out_infinite_alternate]"
           style={{
-            width: "65vw", height: "60vw", top: "-18vw", left: "-12vw",
-            background: "radial-gradient(circle, var(--color-primary), transparent 70%)",
+            width: "80vw", height: "72vw",
+            top: "-24vw", left: "-14vw",
+            background: "radial-gradient(circle, var(--color-primary), transparent 68%)",
+            opacity: 0.38,
           }}
         />
         <div
-          className="absolute rounded-full blur-[100px] opacity-[0.22] animate-[blob-b_11s_ease-in-out_infinite_alternate]"
+          className="absolute rounded-full blur-[130px] animate-[blob-b_18s_ease-in-out_infinite_alternate]"
           style={{
-            width: "55vw", height: "55vw", bottom: "-14vw", right: "-10vw",
+            width: "78vw", height: "70vw",
+            bottom: "-22vw", right: "-16vw",
+            background: "radial-gradient(circle, var(--color-success), transparent 68%)",
+            opacity: 0.42,
+          }}
+        />
+        <div
+          className="absolute rounded-full blur-[100px] animate-[blob-a_22s_ease-in-out_infinite_alternate-reverse]"
+          style={{
+            width: "45vw", height: "40vw",
+            top: "-10vw", right: "-10vw",
             background: "radial-gradient(circle, var(--color-success), transparent 70%)",
-          }}
-        />
-        <div
-          className="absolute rounded-full blur-[100px] opacity-[0.18] animate-[blob-c_13s_ease-in-out_infinite_alternate]"
-          style={{
-            width: "30vw", height: "30vw", top: "38%", left: "55%",
-            background: "radial-gradient(circle, color-mix(in srgb, var(--color-primary) 55%, var(--color-success)), transparent 70%)",
+            opacity: 0.22,
           }}
         />
       </div>
 
-      {/* Dot grid overlay */}
+      {/* Vignette */}
       <div
         className="fixed inset-0 z-0 pointer-events-none"
         aria-hidden="true"
         style={{
-          backgroundImage: "radial-gradient(circle, var(--backdrop-grid) 1px, transparent 1px)",
-          backgroundSize: "24px 24px",
-          maskImage: "radial-gradient(ellipse 75% 75% at 50% 50%, black 40%, transparent)",
-        }}
-      />
-
-      {/* Vignette — softens edges, draws focus to center */}
-      <div
-        className="fixed inset-0 z-0 pointer-events-none"
-        aria-hidden="true"
-        style={{
-          background: "radial-gradient(ellipse 85% 85% at 50% 50%, transparent 45%, color-mix(in srgb, var(--background) 40%, transparent) 100%)",
+          background: "radial-gradient(ellipse 60% 60% at 50% 50%, transparent 20%, color-mix(in srgb, var(--background) 80%, transparent) 100%)",
         }}
       />
 
@@ -559,7 +556,7 @@ export function App() {
         <header className="flex items-center gap-3 border-b border-border px-5 py-4">
           <div
             className="flex size-9 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "var(--blue-dim)", color: "var(--color-primary)" }}
+            style={{ background: "var(--orange-dim)", color: "var(--color-primary)" }}
             aria-hidden="true"
           >
             <PlayIcon className="size-[18px]" fill="currentColor" strokeWidth={0} />
@@ -595,25 +592,40 @@ export function App() {
 
         {/* Status hero */}
         <section
-          className="flex flex-col items-center gap-[0.55rem] border-b border-border px-5 py-5"
+          className="relative flex flex-col items-center gap-[0.55rem] overflow-hidden border-b border-border px-5 py-5"
           aria-live="polite"
         >
-          <StatusRing state={state} />
-          <span
-            className={`text-[0.84rem] font-medium transition-colors duration-300 ${
+          <VisualizerCanvas analyserRef={analyserRef} playing={state === "playing"} />
+          <div className="relative z-10"><StatusRing state={state} /></div>
+          <div
+            key={state}
+            className={`relative z-10 flex items-center gap-[0.4rem] rounded-full border px-[0.65rem] py-[0.22rem] text-[0.74rem] font-medium backdrop-blur-sm animate-[status-appear_0.25s_ease-out_both] ${
               state === "connected"
-                ? "text-success"
+                ? "border-success/40 bg-card/90 text-success"
                 : state === "connecting" || state === "reconnecting"
-                  ? "text-warning"
+                  ? "border-warning/40 bg-card/90 text-warning"
                   : state === "playing"
-                    ? "text-primary"
+                    ? "border-primary/40 bg-card/90 text-primary"
                     : state === "error"
-                      ? "text-destructive"
-                      : "text-muted-foreground"
+                      ? "border-destructive/40 bg-card/90 text-destructive"
+                      : "border-border bg-card/90 text-muted-foreground"
             }`}
           >
+            <span
+              className={`size-[6px] shrink-0 rounded-full ${
+                state === "connected"
+                  ? "bg-success"
+                  : state === "connecting" || state === "reconnecting"
+                    ? "animate-pulse bg-warning"
+                    : state === "playing"
+                      ? "animate-pulse bg-primary"
+                      : state === "error"
+                        ? "bg-destructive"
+                        : "bg-stroke-muted"
+              }`}
+            />
             {statusText}
-          </span>
+          </div>
         </section>
 
         {/* Server collapsible */}
@@ -798,13 +810,13 @@ export function App() {
         </section>
 
         {/* Footer */}
-        <footer className="border-t border-border bg-background/60 px-5 py-[0.55rem] text-center text-[0.68rem] text-muted-foreground/70">
+        <footer className="border-t border-border bg-card px-5 py-[0.55rem] text-center text-[0.68rem] text-muted-foreground/70">
           Powered by{" "}
           <a
             href="https://www.sendspin-audio.com/"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-semibold text-primary hover:underline"
+            className="font-semibold text-success hover:underline"
           >
             Sendspin
           </a>
@@ -813,7 +825,7 @@ export function App() {
             href="https://www.openhomefoundation.org/"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-semibold text-primary hover:underline"
+            className="font-semibold text-success hover:underline"
           >
             Open Home Foundation
           </a>

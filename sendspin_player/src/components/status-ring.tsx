@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type ConnectionState = "disconnected" | "connecting" | "connected" | "playing" | "reconnecting" | "error";
 
@@ -26,6 +26,8 @@ const svgGlow: Partial<Record<ConnectionState, string>> = {
   playing:   "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
 };
 
+const LP_EXIT_MS = 380; // must match lp-exit keyframe duration in index.css
+
 const CIRC    = 2 * Math.PI * 30;
 const ARC_LEN = 47;
 const GROOVES = [15.2, 16.4, 17.6, 18.8, 20, 21.2, 22.4, 23.6, 24.8, 26, 27.2, 28.4] as const;
@@ -34,23 +36,24 @@ export function StatusRing({ state }: { state: ConnectionState }) {
   const spinning = state === "connecting" || state === "reconnecting";
   const pulsing  = state === "playing";
 
-  // LP exit animation: keep LP visible for 380ms after leaving playing state
-  const [lpVisible, setLpVisible]   = useState(pulsing);
-  const [lpExiting, setLpExiting]   = useState(false);
+  const [lpVisible, setLpVisible] = useState(pulsing);
+  const [lpExiting, setLpExiting] = useState(false);
+  const lpVisibleRef = useRef(pulsing);
 
   useEffect(() => {
     if (pulsing) {
+      lpVisibleRef.current = true;
       setLpVisible(true);
       setLpExiting(false);
-    } else if (lpVisible) {
+    } else if (lpVisibleRef.current) {
+      lpVisibleRef.current = false;
       setLpExiting(true);
       const t = setTimeout(() => {
         setLpVisible(false);
         setLpExiting(false);
-      }, 380);
+      }, LP_EXIT_MS);
       return () => clearTimeout(t);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pulsing]);
 
   const showRing = !lpVisible;
@@ -76,10 +79,11 @@ export function StatusRing({ state }: { state: ConnectionState }) {
         {/* ── Playing: LP vinyl record ─────────────────────────────────────── */}
         {lpVisible && (
           <g
-            className={lpExiting
-              ? "animate-[lp-exit_0.38s_ease-in_both]"
-              : "animate-[lp-appear_0.45s_ease-out_both]"}
-            style={{ transformOrigin: "36px 36px" }}
+            className={lpExiting ? undefined : "animate-[lp-appear_0.45s_ease-out_both]"}
+            style={{
+              transformOrigin: "36px 36px",
+              ...(lpExiting && { animation: `lp-exit ${LP_EXIT_MS}ms ease-in both` }),
+            }}
           >
             <g className="animate-[spin_6s_linear_infinite]" style={{ transformOrigin: "36px 36px" }}>
               <circle cx="36" cy="36" r="30" fill="rgb(10,9,14)" />

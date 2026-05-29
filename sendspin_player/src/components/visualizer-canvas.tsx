@@ -43,7 +43,6 @@ export function VisualizerCanvas({ analyserRef, playing }: Props) {
     const decay    = decayRef.current;
 
     function draw() {
-      rafRef.current = requestAnimationFrame(draw);
       const analyser = analyserRef.current;
       const w = canvas!.width;
       const h = canvas!.height;
@@ -61,7 +60,7 @@ export function VisualizerCanvas({ analyserRef, playing }: Props) {
           if (decay[i] > 0.005) { decay[i] *= 0.93; any = true; }
           else decay[i] = 0;
         }
-        if (!any) return;
+        if (!any) return; // nothing left to draw — loop stops, useEffect restarts on next play
       }
 
       const dpr    = devicePixelRatio;
@@ -88,6 +87,8 @@ export function VisualizerCanvas({ analyserRef, playing }: Props) {
         ctx!.roundRect(x, barY, barW, barH, [radius, radius, 0, 0]);
         ctx!.fill();
       }
+
+      rafRef.current = requestAnimationFrame(draw);
     }
 
     draw();

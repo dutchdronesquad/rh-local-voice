@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 export type ConnectionState = "disconnected" | "connecting" | "connected" | "playing" | "reconnecting" | "error";
 
 const arcColor: Record<ConnectionState, string> = {
@@ -13,80 +15,147 @@ const dotColor: Record<ConnectionState, string> = {
   disconnected: "bg-stroke-muted",
   connecting:   "bg-warning shadow-[0_0_8px_var(--color-warning)]",
   reconnecting: "bg-warning shadow-[0_0_8px_var(--color-warning)]",
-  connected:    "bg-success",
-  playing:      "bg-primary shadow-[0_0_8px_var(--color-primary)]",
+  connected:    "bg-success shadow-[0_0_9px_var(--color-success)]",
+  playing:      "",
   error:        "bg-destructive",
 };
 
-// r=30 circle, circumference ≈ 188.5
-const CIRC = 2 * Math.PI * 30;
-const ARC_LEN = 47; // ~quarter-circle comet arc while spinning
+const svgGlow: Partial<Record<ConnectionState, string>> = {
+  connected: "drop-shadow(0 0 4px color-mix(in srgb, var(--color-success) 40%, transparent))",
+  error:     "drop-shadow(0 0 4px color-mix(in srgb, var(--color-destructive) 35%, transparent))",
+  playing:   "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
+};
+
+const CIRC    = 2 * Math.PI * 30;
+const ARC_LEN = 47;
+const GROOVES = [15.2, 16.4, 17.6, 18.8, 20, 21.2, 22.4, 23.6, 24.8, 26, 27.2, 28.4] as const;
 
 export function StatusRing({ state }: { state: ConnectionState }) {
   const spinning = state === "connecting" || state === "reconnecting";
   const pulsing  = state === "playing";
 
+  // LP exit animation: keep LP visible for 380ms after leaving playing state
+  const [lpVisible, setLpVisible]   = useState(pulsing);
+  const [lpExiting, setLpExiting]   = useState(false);
+
+  useEffect(() => {
+    if (pulsing) {
+      setLpVisible(true);
+      setLpExiting(false);
+    } else if (lpVisible) {
+      setLpExiting(true);
+      const t = setTimeout(() => {
+        setLpVisible(false);
+        setLpExiting(false);
+      }, 380);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulsing]);
+
+  const showRing = !lpVisible;
+  const filter   = svgGlow[lpVisible ? "playing" : state];
+
   return (
-    <div className="relative size-[58px]">
-      {/* Pulse rings — always mounted, opacity fade avoids mount/unmount snap */}
-      <span
-        className={`absolute inset-[9px] rounded-full border border-[rgb(79_110_247/0.45)] transition-opacity duration-500 ${
-          pulsing ? "animate-[playback-pulse_1.65s_ease-out_infinite]" : "opacity-0"
-        }`}
-        aria-hidden="true"
-      />
-      <span
-        className={`absolute inset-[3px] rounded-full border border-[rgb(79_110_247/0.25)] transition-opacity duration-500 ${
-          pulsing ? "animate-[playback-pulse_1.65s_ease-out_infinite]" : "opacity-0"
-        }`}
-        style={{ animationDelay: "0.45s" }}
-        aria-hidden="true"
-      />
+    <div className="relative size-[76px]">
 
-      <svg viewBox="0 0 72 72" className="size-full" aria-hidden="true">
-        {/* Track */}
-        <circle cx="36" cy="36" r="30" className="fill-none stroke-muted [stroke-width:4]" />
+      <svg
+        viewBox="0 0 72 72"
+        overflow="visible"
+        className="relative size-full"
+        style={filter ? { filter } : undefined}
+        aria-hidden="true"
+      >
+        <defs>
+          <radialGradient id="label-shine" cx="38%" cy="34%" r="70%">
+            <stop offset="0%"   stopColor="white" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="black" stopOpacity="0.14" />
+          </radialGradient>
+        </defs>
 
-        {/* Spinning: fixed-length arc that rotates — no dashoffset weirdness */}
-        {spinning && (
+        {/* ── Playing: LP vinyl record ─────────────────────────────────────── */}
+        {lpVisible && (
           <g
-            className={`animate-[spin_1.5s_linear_infinite] ${arcColor[state]}`}
+            className={lpExiting
+              ? "animate-[lp-exit_0.38s_ease-in_both]"
+              : "animate-[lp-appear_0.45s_ease-out_both]"}
             style={{ transformOrigin: "36px 36px" }}
           >
-            <circle
-              cx="36" cy="36" r="30"
-              className="fill-none [stroke-width:4] [stroke-linecap:round]"
-              style={{ strokeDasharray: `${ARC_LEN} ${CIRC - ARC_LEN}` }}
-            />
+            <g className="animate-[spin_6s_linear_infinite]" style={{ transformOrigin: "36px 36px" }}>
+              <circle cx="36" cy="36" r="30" fill="rgb(10,9,14)" />
+              {GROOVES.map((r, i) => (
+                <circle key={r} cx="36" cy="36" r={r} fill="none"
+                  stroke="rgba(255,255,255,0.07)" strokeWidth={i % 2 === 0 ? "0.6" : "0.38"} />
+              ))}
+              <circle cx="36" cy="36" r="29"   fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.4" />
+              <circle cx="36" cy="36" r="29.6" fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7" />
+              <circle cx="36" cy="36" r="30"   fill="none" stroke="rgba(0,0,0,0.6)"        strokeWidth="0.5" />
+              <circle cx="36" cy="36" r="14.3" fill="rgb(8,7,11)" />
+              <circle cx="36" cy="36" r="14"   fill="none" stroke="rgba(255,255,255,0.20)" strokeWidth="0.5" />
+              <circle cx="36" cy="36" r="13.5" fill="var(--color-primary)" />
+              <circle cx="36" cy="36" r="11"   fill="none" stroke="rgba(0,0,0,0.15)" strokeWidth="0.4"  />
+              <circle cx="36" cy="36" r="8"    fill="none" stroke="rgba(0,0,0,0.10)" strokeWidth="0.35" />
+              <circle cx="36" cy="36" r="5"    fill="none" stroke="rgba(0,0,0,0.07)" strokeWidth="0.3"  />
+              <line x1="36" y1="22.8" x2="36" y2="33.6"
+                stroke="rgba(255,255,255,0.50)" strokeWidth="1.6" strokeLinecap="round" />
+              <path d="M 33.2 22.4 A 14 14 0 0 1 38.8 22.4"
+                fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.0" strokeLinecap="round" />
+              <circle cx="36" cy="7.6" r="2.2" fill="rgba(255,255,255,0.55)" />
+              <circle cx="36" cy="36" r="13.5" fill="url(#label-shine)" />
+              <circle cx="36" cy="36" r="2.2"  fill="rgb(5,5,8)" />
+            </g>
           </g>
         )}
 
-        {/* Not spinning: full arc, color transition between states */}
-        {!spinning && (
-          <circle
-            cx="36" cy="36" r="30"
-            className={`fill-none [stroke-width:4] [stroke-linecap:round] transition-[stroke] duration-300 [transform:rotate(-90deg)] [transform-origin:50%_50%] ${arcColor[state]}`}
-            style={{ strokeDasharray: CIRC }}
-          />
+        {/* ── Other states: normal arc ring ────────────────────────────────── */}
+        {showRing && (
+          <g key="ring" className="animate-[ring-appear_0.35s_ease-out_both]">
+            <circle cx="36" cy="36" r="30" className="fill-none stroke-muted [stroke-width:4]" />
+            {spinning ? (
+              <g
+                className={`animate-[spin_1.5s_linear_infinite] ${arcColor[state]}`}
+                style={{ transformOrigin: "36px 36px" }}
+              >
+                <circle
+                  cx="36" cy="36" r="30"
+                  className="fill-none [stroke-width:4] [stroke-linecap:round]"
+                  style={{ strokeDasharray: `${ARC_LEN} ${CIRC - ARC_LEN}` }}
+                />
+              </g>
+            ) : state === "connected" ? (
+              <circle
+                key="connected"
+                cx="36" cy="36" r="30"
+                className={`fill-none [stroke-width:4] [stroke-linecap:round] [transform:rotate(-90deg)] [transform-origin:50%_50%] [animation:ring-fill_0.65s_ease-out_both,ring-ready_3s_ease-in-out_0.65s_infinite] ${arcColor[state]}`}
+              />
+            ) : state === "error" ? (
+              <circle
+                key="error"
+                cx="36" cy="36" r="30"
+                className={`fill-none [stroke-width:4] [stroke-linecap:round] [transform:rotate(-90deg)] [transform-origin:50%_50%] [animation:ring-error_0.4s_ease-in-out_4_forwards] ${arcColor[state]}`}
+                style={{ strokeDasharray: CIRC }}
+              />
+            ) : (
+              <circle
+                key={state}
+                cx="36" cy="36" r="30"
+                className={`fill-none [stroke-width:4] [stroke-linecap:round] transition-[stroke] duration-300 [transform:rotate(-90deg)] [transform-origin:50%_50%] ${arcColor[state]}`}
+                style={{ strokeDasharray: CIRC }}
+              />
+            )}
+          </g>
         )}
       </svg>
 
-      {/* Center dot / playing bars */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        {pulsing ? (
-          <div className="flex h-[22px] items-center justify-center gap-[3px]" aria-hidden="true">
-            {[0, 0.08, 0.16, 0.24, 0.32].map((delay, i) => (
-              <span
-                key={i}
-                className="w-[3px] rounded-full bg-primary animate-[playing-bar_0.72s_ease-in-out_infinite] shadow-[0_0_8px_rgb(79_110_247/0.65)]"
-                style={{ height: "8px", animationDelay: `${delay}s` }}
-              />
-            ))}
-          </div>
-        ) : (
-          <span className={`size-[10px] rounded-full transition-colors duration-300 ${dotColor[state]}`} />
-        )}
-      </div>
+      {/* Status dot — all non-playing states */}
+      {showRing && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span
+            key={state}
+            className={`size-[11px] rounded-full animate-[dot-pop_0.3s_ease-out_both] ${dotColor[state]}`}
+          />
+        </div>
+      )}
     </div>
   );
 }

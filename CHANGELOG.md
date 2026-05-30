@@ -1,14 +1,43 @@
 # Changelog
 
-All notable shipped changes to Local Voice should be documented in this file.
+All notable shipped changes to Race Voice should be documented in this file.
 
 This changelog is intentionally concise. GitHub Releases can carry the fuller change list and release assets.
+
+## [1.0.0] - 2026-05-30
+
+### Plugin renamed to Race Voice
+
+The plugin has been renamed from Local Voice to Race Voice. All configuration keys, file paths, and references have been updated accordingly.
+
+### Standalone Sendspin service
+
+The Sendspin service now runs as a separate process, decoupled from the RotorHazard plugin. Each release ships two artifacts:
+
+**Debian package** — the primary deployment target. Install this on the same Raspberry Pi as the race timer. It runs headless alongside RotorHazard and receives audio from the plugin over the local ingest API (port 8766).
+
+**Docker image** — intended for running the service on a separate machine, such as a cloud relay for remote listeners. The Docker image bundles the browser player so listeners can open it directly from the container.
+
+```
+docker run -p 8766:8766 -p 8927:8927 ghcr.io/dutchdronesquad/rh-race-voice:latest
+```
+
+### Redesigned browser player
+
+The built-in browser player has been fully rewritten in React with a dark-themed component library. The new player includes:
+
+- Animated status ring that pulses during playback
+- Audio visualizer driven by the live PCM stream
+- Sync mode selector (Sync, Quality, Quality local) with per-mode descriptions
+- Diagnostics panel showing format, clock sync status, sync error, output latency, correction method, and playback rate
+- Scrollable activity log with colour-coded playback and warning events
+- Share button that generates a QR code so other devices can join the same audio session
 
 ## [0.2.0] - 2026-05-24
 
 ### Scheduled race callouts
 
-Local Voice now listens to RotorHazard race schedule events and can announce countdowns before a deferred race start. The default countdown phrases cover 60, 30, 10, and 5 seconds before the scheduled start, and pending countdowns are cancelled when the schedule is replaced or cancelled.
+Race Voice now listens to RotorHazard race schedule events and can announce countdowns before a deferred race start. The default countdown phrases cover 60, 30, 10, and 5 seconds before the scheduled start, and pending countdowns are cancelled when the schedule is replaced or cancelled.
 
 Countdown phrases are localized alongside lap callouts for the supported voice-model languages:
 
@@ -39,7 +68,7 @@ Playback buffering has also been tightened:
 
 ### Local voice generation
 
-Local Voice can now generate RotorHazard callouts on the timing server with Piper TTS, without relying on browser speech or cloud services. Voice models are downloaded on first use, cached locally, and configured from the RotorHazard settings panel.
+Race Voice can now generate RotorHazard callouts on the timing server with Piper TTS, without relying on browser speech or cloud services. Voice models are downloaded on first use, cached locally, and configured from the RotorHazard settings panel.
 
 For race operators, the main benefits are:
 
@@ -61,4 +90,4 @@ The audio queue also tracks priorities and expiry times so stale lap callouts ca
 
 The settings panel includes quick actions for generating a test phrase, playing an audio check clip, stopping current playback, and clearing the selected voice model's TTS cache.
 
-This release requires Python 3.12 or newer. The selected Piper model needs internet access once for the initial download, and regular RotorHazard browser clients should have Voice Volume set to `0` when Local Voice is handling callouts.
+This release requires Python 3.12 or newer. The selected Piper model needs internet access once for the initial download, and regular RotorHazard browser clients should have Voice Volume set to `0` when Race Voice is handling callouts.

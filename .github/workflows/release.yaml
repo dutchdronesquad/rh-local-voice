@@ -7,10 +7,11 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
-  build-and-upload:
-    name: Build and upload release asset
+  build-player:
+    name: Build player assets
     runs-on: ubuntu-latest
     steps:
       - name: ⤵️ Check out code from GitHub
@@ -20,16 +21,95 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-          cache-dependency-path: player/package-lock.json
+          cache-dependency-path: sendspin_player/package-lock.json
       - name: 🏗 Install player dependencies
         run: npm ci
-        working-directory: player
+        working-directory: sendspin_player
       - name: 🚀 Build player
-        run: npm run build
-        working-directory: player
+        run: npm run build:plugin
+        working-directory: sendspin_player
       - name: 📦 Package plugin
-        run: zip -r local_voice.zip custom_plugins
+        run: zip -r race_voice.zip custom_plugins
       - name: ⬆️ Upload release asset
         uses: softprops/action-gh-release@v3.0.0
         with:
-          files: local_voice.zip
+          files: race_voice.zip
+
+  build-deb:
+    name: Build ${{ matrix.arch }} .deb
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.2
+      - name: 🏗 Build .deb
+        uses: ./.github/actions/build-sendspin-deb
+        with:
+          arch: ${{ matrix.arch }}
+          version: ${{ github.event.release.tag_name }}
+      - name: 🧾 Write checksum
+        run: |
+          for deb in dist/sendspin-service_*_${{ matrix.arch }}.deb; do
+            sha256sum "$deb" > "$deb.sha256"
+          done
+      - name: ⬆️ Upload release asset
+        uses: softprops/action-gh-release@v3.0.0
+        with:
+          files: |
+            dist/sendspin-service_*.deb
+            dist/sendspin-service_*.deb.sha256
+
+  build-docker:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v6.0.2
+      - name: ⚙️ Configure Docker image
+        id: docker-config
+        shell: bash
+        run: |
+          image_owner="${GITHUB_REPOSITORY_OWNER,,}"
+          version="${GITHUB_REF_NAME#v}"
+
+          echo "image=ghcr.io/${image_owner}/sendspin-service" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: 🏗 Set up QEMU
+        uses: docker/setup-qemu-action@v4.1.0
+      - name: 🏗 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.1.0
+      - name: 🔐 Log in to GHCR
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 🧾 Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6.1.0
+        with:
+          images: ${{ steps.docker-config.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.docker-config.outputs.version }}
+            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+            type=sha,prefix=sha-
+      - name: 🏗 Build and publish Docker image
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SERVICE_VERSION=${{ steps.docker-config.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

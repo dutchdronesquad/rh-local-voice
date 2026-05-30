@@ -2,7 +2,7 @@
 
 ## Project Context
 
-Local Voice is a RotorHazard RHAPI plugin that generates voice callouts server-side with Piper TTS and streams the resulting WAV audio to Sendspin clients. The primary plugin package lives in `custom_plugins/local_voice/`.
+Race Voice is a RotorHazard RHAPI plugin that generates voice callouts server-side with Piper TTS and streams the resulting WAV audio to Sendspin clients. The primary plugin package lives in `custom_plugins/race_voice/`.
 
 Important modules:
 
@@ -16,7 +16,7 @@ Important modules:
   - `services/lap_callouts.py`: lap callout segment planning and reusable segment lists for pre-cache.
   - `services/precache.py`: manual pre-cache rebuild orchestration, stale-job cancellation, cleanup, and completion notifications.
   - `services/schedule.py`: scheduled-race countdown timers.
-- `player/`: Vite/Preact source for the browser player; production output is written to `custom_plugins/local_voice/player/`.
+- `sendspin_player/`: Vite/React/shadcn source for the browser player; production output is written to `custom_plugins/race_voice/player/`.
 
 ## Runtime Behavior
 
@@ -45,7 +45,7 @@ Late-joining Sendspin clients should be synced into the active group while playb
 Generated files live below RotorHazard's data directory:
 
 ```text
-local_voice_cache/
+race_voice_cache/
   models/                 downloaded Piper ONNX models
   tts/<model>/            normal cached phrases
   tts/<model>/precache/pilots/
@@ -64,7 +64,7 @@ Cache keys must include normalized phrase text and synthesis parameters so chang
 
 The plugin currently imports Piper and ONNX Runtime at module import time. Missing runtime dependencies are expected to fail through the normal RotorHazard/plugin dependency path rather than through a custom lazy-import layer.
 
-Keep dependencies aligned between `pyproject.toml` and `custom_plugins/local_voice/manifest.json`.
+Keep dependencies aligned between `pyproject.toml` and `custom_plugins/race_voice/manifest.json`.
 
 ## Development Checks
 
@@ -76,19 +76,32 @@ Useful checks:
 - `uv run ruff format --check .`
 - `uv run prek run --all-files`
 
-The browser player source lives in `player/`:
+The browser player source lives in `sendspin_player/`:
 
-- `npm run check`
 - `npm run lint`
 - `npm run build`
+- `npm run build:plugin`
 
-`npm run build` writes production files into `custom_plugins/local_voice/player/`. The release workflow builds the player and zips `custom_plugins` as `local_voice.zip`.
+`npm run build` builds the standalone player for `/`. `npm run build:plugin` builds the RotorHazard plugin player for `/player/`. Both write production files into `custom_plugins/race_voice/player/`. The release workflow uses the plugin build and zips `custom_plugins` as `race_voice.zip`.
 
 ## Documentation Style
 
-The README should stay selective: keep it focused on what Local Voice is, what it needs, and how to get started. Move day-to-day operation, settings, cache behavior, and troubleshooting details into files under `docs/`.
+The README should stay selective: keep it focused on what Race Voice is, what it needs, and how to get started. Move day-to-day operation, settings, cache behavior, and troubleshooting details into files under `docs/`.
 
-Keep user-facing docs aligned with actual race behavior, especially cache cleanup, browser playback, Sendspin port `8927`, and the need to set RotorHazard browser Voice Volume to `0` when Local Voice handles callouts.
+Keep user-facing docs aligned with actual race behavior, especially cache cleanup, browser playback, Sendspin port `8927`, and the need to set RotorHazard browser Voice Volume to `0` when Race Voice handles callouts.
+
+## PR Style
+
+Write PR descriptions as a short explanation of the change, not as a raw change
+log. Start with one or two paragraphs that explain the problem, the chosen
+direction, and the user-visible result. Use bullet lists only for the parts that
+are easier to scan as lists, such as notable implementation details, follow-up
+work, or validation steps.
+
+Avoid PR bodies made entirely of bullet lists. Do not enumerate every touched
+file or internal refactor unless it changes behavior, deployment, packaging, or
+the operator workflow. The reader should understand why the branch exists before
+they see the checklist.
 
 ## Changelog Style
 

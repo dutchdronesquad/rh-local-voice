@@ -1,114 +1,112 @@
 # Architecture
 
-## Overview
+## Runtime Flow
 
-The plugin is structured as a pipeline: RotorHazard events → synthesis → audio queue → Sendspin service → browser clients.
-
-```
-RH event thread
-  │
-  ├─ Flt.EMIT_PHONETIC_DATA  ──► ThreadPoolExecutor (_synth_pool)
-  ├─ Flt.EMIT_PHONETIC_TEXT  ──►   │
-  ├─ Evt.HEAT_SET            ──►   │
-  └─ Evt.RACE_SCHEDULE       ──► ScheduleCalloutManager ──► _synth_pool
-                                      │
-                                      ▼
-                               PiperSynthesizer
-                                   │
-                                   └─ WAV cache (disk)
-                                   ▼
-                               AudioQueue (priority queue, daemon thread)
-                                   │
-                                   ▼
-                               HTTP output client
-                                   │
-                                   ▼
-                               Sendspin service
-                                   │
-                                   ▼
-                               SendSpinServer (service process)
-                                   │
-                                   ▼
-                            Browser clients (Sendspin protocol)
+```text
+RotorHazard event/filter
+  -> RaceVoicePlugin
+  -> PiperSynthesizer
+  -> WAV cache
+  -> AudioQueue
+  -> SendspinServiceClient (HTTP)
+  -> sendspin-service
+  -> Sendspin browser/player clients
 ```
 
-## TTS concurrency model
+The RotorHazard plugin owns event handling, TTS generation, caching, enqueueing, and the browser player route at `/player`. `sendspin-service` owns `aiosendspin`, player connections, stream state, and the Sendspin player endpoint on port `8927`.
 
-Piper synthesis runs via [ONNX Runtime](https://onnxruntime.ai/) on the CPU. ONNX Runtime's `CPUExecutionProvider` serialises `session.run()` calls globally within a process, meaning concurrent inference across multiple threads yields no throughput gain.
+## Plugin Package
 
-The plugin therefore uses a single shared `InferenceSession` with `intra_op_num_threads` set to the full CPU core count. This maximises the speed of each individual synthesis call. A `ThreadPoolExecutor` is still used, but only to keep the RotorHazard event thread free — not to parallelise inference.
+- `plugin.py`: RotorHazard event/filter integration, synthesis orchestration, queueing, and UI callbacks.
+- `piper.py`: Piper model download, model loading, synthesis, and WAV cache writes.
+- `audio_queue.py`: plugin-side priority queue that keeps RotorHazard callbacks fast.
+- `output.py`: HTTP output client for `sendspin-service`.
+- `services/lap_callouts.py`: segment planning for reusable pilot/lap/time callouts.
+- `services/precache.py`: manual pre-cache rebuild orchestration.
+- `services/schedule.py`: scheduled race callout timers.
 
-**Consequence for future changes:** do not create multiple `InferenceSession` instances or submit parallel synthesis tasks expecting a throughput improvement. True parallel inference would require multiprocessing (separate processes with separate ONNX runtimes), which is too heavyweight for a Raspberry Pi deployment.
+The plugin sends `/v1/play` requests with inline `wav_files` payloads. The service API does not depend on reading plugin cache files from disk.
 
-Although `max_workers` is set to `os.cpu_count()`, this does not cause N×N thread contention: the ONNX global lock means only one inference runs at a time and the remaining workers simply block waiting for the lock — they do not consume CPU. The high worker count is intentional so that a simultaneous burst of lap crossings (up to N pilots at once) can each claim a worker immediately rather than queuing behind one another in the executor.
+## Service Package
 
-## WAV cache layout
+- `sendspin_service/server.py`: `aiohttp.web` service for the HTTP ingest API, health endpoint, config/env parsing, play, and stop endpoints.
+- `sendspin_service/audio_queue.py`: service-side priority queue.
+- `sendspin_service/sendspin.py`: synchronous adapter around `aiosendspin`.
 
-All generated WAV files live under `{rh-data}/local_voice_cache/`:
+The same service code is packaged in two deployment formats:
 
-```
-local_voice_cache/
+- `.deb` + systemd for local Pi/Ubuntu timing-server installs.
+- Docker image for container/cloud deployments, with the browser player served from `/`.
+
+Service endpoints:
+
+- `GET /health`: service status, package `version`, Sendspin listen port, and connected player count.
+- `POST /v1/play`
+- `POST /v1/stop`
+
+`POST /v1/play` accepts `wav_files` entries with base64 WAV data plus optional `text`, `priority`, `expiry_sec`, `play_at`, and `volume`.
+
+## Playback Behavior
+
+`SendSpinServer` runs an asyncio event loop in a dedicated thread and exposes blocking `play()` / `stop()` methods to the service queue worker.
+
+Important behavior:
+
+- Consecutive play calls append to the active stream instead of restarting it.
+- Jobs can provide `play_at` for scheduled static sounds.
+- Late-joining browser clients are added to the active stream group.
+- The stream is stopped after the queued audio has finished.
+
+## Audio Queue and Priority
+
+Both the plugin and the service use a single worker queue to keep event callbacks and HTTP requests short. Jobs carry a priority and expiry deadline.
+
+| Priority | Used for |
+|----------|----------|
+| HIGH     | Winner announcements, manual test phrase, audio check, scheduled-race countdowns |
+| NORMAL   | Lap callouts |
+| LOW      | Crossing beeps (earmarked, not yet used by the current plugin) |
+
+Expired jobs are dropped before playback starts. This avoids playing stale lap callouts after a busy event burst.
+
+## TTS Concurrency
+
+Piper synthesis uses ONNX Runtime on CPU. ONNX Runtime serializes `session.run()` calls within a process, so multiple concurrent synthesis threads do not improve throughput.
+
+The plugin uses one shared `InferenceSession` with `intra_op_num_threads` set to the available CPU count. A `ThreadPoolExecutor` is still used to keep RotorHazard event callbacks non-blocking and to absorb bursts of race events.
+
+## Cache Layout
+
+```text
+race_voice_cache/
   models/
-    {model_name}.onnx          # downloaded once on first use
+    {model_name}.onnx
     {model_name}.onnx.json
   tts/
     {model_name}/
       precache/
-        pilots/                # pilot-name segments generated by Rebuild pre-cache
-        laps/                  # lap-number segments generated by Rebuild pre-cache
-        schedule/              # scheduled-race countdown phrases
-      tmp/                     # ephemeral lap-time WAVs; cleared on each heat select
-      test/                    # test-phrase WAVs generated via the UI button
-      {sha1}_{speed}_{...}.wav # ad-hoc cached phrases
+        pilots/
+        laps/
+        schedule/
+      tmp/
+      test/
+      {sha1}_{speed}_{noise}_{noise_w}.wav
 ```
 
-Cache keys are `sha1(text.lower())_{speed}_{noise}_{noise_w}` so switching synthesis parameters never causes stale-cache collisions. The model name is always part of the directory path, so switching voice models is also safe.
+Cache keys include normalized text and synthesis parameters. The model name is part of the directory path, so changing models or voice settings cannot reuse stale audio.
 
-## Audio queue and priority
+## Lap Callout Segments
 
-`AudioQueue` is a `PriorityQueue` drained by a single daemon thread. Jobs carry a `Priority` (HIGH / NORMAL / LOW) and an expiry timestamp. The worker drops any job whose deadline has passed before playback starts.
+Lap callouts are synthesized as reusable segments and played as one job:
 
-| Priority | Used for |
-|----------|----------|
-| HIGH     | Winner announcement, manual test phrase, scheduled-race countdowns |
-| NORMAL   | Lap callouts |
-| LOW      | Reserved |
+1. **Pilot segment**: `"{callsign},"`, stored in `precache/pilots/`.
+2. **Lap-number segment**: `"{Lap} {n}"`, stored in `precache/laps/`.
+3. **Lap-time segment**: the dynamic phonetic lap time, synthesized into `tmp/`.
 
-## Sendspin Service Integration
+This avoids pre-generating every pilot/lap combination while still keeping common parts cached before racing starts.
 
-The target architecture keeps Sendspin server ownership outside the RotorHazard
-plugin. The plugin owns TTS generation and queueing, then sends WAV playback
-jobs to the local Sendspin service over HTTP. The service owns `aiosendspin`,
-player connections, stream state, reconnect behavior, and stop/resume handling.
+## Pre-Cache Rebuilds
 
-The service exposes:
+Manual pre-cache rebuilds are handled by `services/precache.py`. The manager owns stale-generation tracking, directory cleanup, schedule phrase generation, lap segment generation, pilot-name generation, and completion notifications.
 
-- `GET /health`
-- `POST /v1/play`
-- `POST /v1/stop`
-
-Inside the service, `SendSpinServer` wraps `aiosendspin` behind a synchronous
-interface. It runs an asyncio event loop on a dedicated daemon thread and
-exposes blocking `play()` / `stop()` methods so the service `AudioQueue` worker
-can interact with it without knowing about asyncio.
-
-Key design points:
-- Consecutive `play()` calls append to the active stream rather than restarting it, so back-to-back lap callouts play without audible resets or gaps.
-- Late-joining browser clients are synced into the active stream group so they receive audio already in progress.
-- The stream is torn down automatically after the last queued clip finishes playing (idle-stop task).
-
-## Lap callout segment synthesis
-
-Lap-callout segment planning lives in `services/lap_callouts.py`. `plugin.py` still owns RotorHazard event handling, live synthesis, and enqueueing.
-
-Each lap callout is synthesized as reusable segments and played as a single job:
-
-1. **Pilot segment** — `"{callsign},"` — stored in `precache/pilots/` and reused for the current heat.
-2. **Lap-number segment** — `"{Lap} {n}"` — stored in `precache/laps/` and reused across pilots.
-3. **Lap-time segment** — the phonetic lap time (e.g. `"twelve point four seconds"`) — synthesized live into `tmp/` and unique per crossing.
-
-Segmenting avoids pre-generating every pilot/lap combination while still allowing the dynamic lap time to be generated on demand. It also keeps the later announcement-option work small, because callout parts can be omitted without creating new pre-cache combinations.
-
-## Pre-cache rebuilds
-
-Manual pre-cache rebuild orchestration lives in `services/precache.py`. `plugin.py` starts rebuilds from the UI button and handles event reset cancellation, while `PrecacheManager` owns stale-generation tracking, directory cleanup, schedule phrase generation, lap segment generation, and completion notifications.
+Operators should run **Rebuild pre-cache** after startup or voice setting changes when they want predictable phrases prepared before racing.

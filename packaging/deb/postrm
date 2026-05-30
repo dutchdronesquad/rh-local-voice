@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload || true
+fi
+
+if [ "$1" = "purge" ]; then
+    rm -f /etc/default/sendspin-service
+    rm -rf /var/lib/sendspin-service
+    rm -rf /var/lib/private/sendspin-service
+fi
+
+exit 0

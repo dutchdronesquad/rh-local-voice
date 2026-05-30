@@ -1,0 +1,11 @@
+# HTTP ingest API used by local producers.
+SENDSPIN_INGEST_HOST=127.0.0.1
+SENDSPIN_INGEST_PORT=8766
+
+# Sendspin player endpoint used by browser clients.
+SENDSPIN_HOST=0.0.0.0
+SENDSPIN_PORT=8927
+SENDSPIN_ADVERTISE=true
+
+# Maximum JSON request body size in MiB.
+SENDSPIN_MAX_BODY_MB=50

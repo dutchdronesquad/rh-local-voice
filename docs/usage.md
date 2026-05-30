@@ -1,107 +1,226 @@
 # Usage Guide
 
-This guide covers day-to-day setup and operation for Local Voice.
+Race Voice generates RotorHazard callout WAV files on the timing server and sends them to `sendspin-service` over HTTP. The RotorHazard plugin serves its browser player at `/player`; the standalone service/container serves its player at `/`.
 
-## Basic Setup
+The plugin ZIP and service `.deb` are separate release assets. Install both for a normal RotorHazard setup: the plugin provides RotorHazard integration and the `/player` page, while `sendspin-service` provides playback transport.
 
-1. In RotorHazard, open **Settings** -> **Local Voice**.
-2. Enable **Plugin audio**.
-3. Choose a voice model and adjust the speech parameters if needed.
-4. Install and start the Sendspin service on the RotorHazard host.
-5. Open `/player` from the RotorHazard host in a browser tab on the playback device, for example `http://rotorhazard.local:5000/player`.
-6. Set normal RotorHazard browser Voice Volume to `0` on clients that should only use Local Voice audio.
-7. Use **Generate test phrase** or **Play audio check** to verify playback.
+## Setup
 
-The Sendspin service receives plugin playback jobs on `127.0.0.1:8766` and
-serves browser players on port `8927`. If another machine is used for
-playback, make sure port `8927` is reachable on the local network.
+1. Install and start `sendspin-service`.
+2. In RotorHazard, open **Settings** -> **Race Voice**.
+3. Enable **Plugin audio**.
+4. Confirm **Sendspin service URL** is `http://127.0.0.1:8766`.
+5. Choose a voice model and speech settings.
+6. Open the browser player from the RotorHazard UI on the playback device, for example `<RotorHazard UI base URL>/player`.
+7. Set normal RotorHazard browser Voice Volume to `0` on clients that should not play duplicate built-in callouts.
+8. Use **Generate test phrase** or **Play audio check**.
 
 ## Sendspin Service
 
-The planned local playback path is a separate service package named
-`rh-sendspin-service`. The plugin generates and caches WAV files, then sends
-playback jobs to the service over local HTTP.
-
-Current development command:
+Download the `.deb` for your architecture from the [GitHub Releases page](https://github.com/dutchdronesquad/rh-race-voice/releases). Use `arm64` for 64-bit Raspberry Pi OS (the default since Raspberry Pi OS Bookworm) and `amd64` for x86 machines.
 
 ```shell
-python -m sendspin_service
+wget https://github.com/dutchdronesquad/rh-race-voice/releases/download/v<version>/sendspin-service_<version>_arm64.deb
+sudo apt install ./sendspin-service_<version>_arm64.deb
 ```
 
-Target user install:
+Common checks:
 
 ```shell
-sudo apt install ./rh-sendspin-service_0.1.0_arm64.deb
+systemctl status sendspin-service
+curl http://127.0.0.1:8766/health
+journalctl -u sendspin-service -n 80 --no-pager
 ```
 
-Useful endpoints:
+Default config is stored in `/etc/default/sendspin-service`:
 
-- `GET /health`: service status, version, Sendspin port, and connected player count.
-- `POST /v1/play`: plugin endpoint for WAV playback jobs.
-- `POST /v1/stop`: stops current playback.
+```shell
+SENDSPIN_INGEST_HOST=127.0.0.1
+SENDSPIN_INGEST_PORT=8766
+SENDSPIN_HOST=0.0.0.0
+SENDSPIN_PORT=8927
+SENDSPIN_ADVERTISE=true
+SENDSPIN_MAX_BODY_MB=50
+```
 
-Packaging work is tracked in `Sendspin Service Package PVA.md`.
+The service API accepts inline WAV payloads via `wav_files`. It does not accept filesystem paths. This keeps the packaged service independent of RotorHazard/plugin directory permissions while running with `DynamicUser=yes`.
 
-## Settings
+## Docker Image
 
-- **Enable plugin audio**: Turns Local Voice callout generation on or off.
-- **Voice model**: Selects the Piper voice model. Models are downloaded once and reused.
-- **Speech speed**: Controls speaking rate. `1.0` is Piper default; lower is slower, higher is faster.
-- **Noise scale**: Controls voice variation. Lower values are more monotone; higher values are more expressive.
-- **Phoneme width noise**: Controls duration variation between phonemes.
-- **Sendspin service URL**: HTTP ingest URL for the local Sendspin service.
-- **Sendspin service timeout**: HTTP timeout for local service playback requests.
-- **Test phrase**: Phrase used by the **Generate test phrase** button.
+The Docker image is the container deployment path for `sendspin-service`. For a normal Raspberry Pi timing-server install, use the `.deb` package instead.
 
-## Quick Buttons
+Basic local container run:
 
-- **Generate test phrase**: Generates and queues the configured test phrase.
-- **Play audio check**: Plays a bundled music clip through the Sendspin path.
-- **Stop audio**: Stops Sendspin playback and clears queued audio.
-- **Clear TTS cache**: Deletes all cached WAV files for the selected voice model.
+```shell
+docker run --rm \
+  -p 8766:8766 \
+  -p 8927:8927 \
+  ghcr.io/dutchdronesquad/sendspin-service:latest
+```
+
+Docker Compose:
+
+```shell
+cp .env.example .env
+sed -i "s/change-this-token/$(openssl rand -hex 32)/" .env
+docker compose up -d
+```
+
+The included Compose file builds the local Dockerfile by default. To run the published image instead, replace the `build:` block with `image: ghcr.io/dutchdronesquad/sendspin-service:latest`.
+Container runtime settings are read from `.env`; the checked-in `.env.example` contains the default host, port, advertise, body-size, player-dir, and API-token settings.
+
+The container serves the browser player at `http://<container-host>:8766/`. The HTTP ingest API is on the same port under `/v1`, and the health check is available at `/health`. Browser clients connect to the Sendspin WebSocket endpoint on port `8927` at `/sendspin`.
+
+Container defaults:
+
+```shell
+SENDSPIN_INGEST_HOST=0.0.0.0
+SENDSPIN_INGEST_PORT=8766
+SENDSPIN_HOST=0.0.0.0
+SENDSPIN_PORT=8927
+SENDSPIN_ADVERTISE=false
+SENDSPIN_MAX_BODY_MB=50
+SENDSPIN_PLAYER_DIR=/opt/sendspin-service/player
+```
+
+For a public container deployment, set `SENDSPIN_API_TOKEN` before exposing port `8766`. Producers must send `Authorization: Bearer <token>` for `/v1/play` and `/v1/stop`. Keep it unset only for local-only testing on a trusted machine.
+
+The image does not include the RotorHazard plugin. The bundled player is for direct container use; the normal RotorHazard plugin ZIP still serves its own `/player` route.
+
+Manual playback test:
+
+```shell
+WAV=$(base64 -w0 custom_plugins/race_voice/assets/moavii-foreign.wav)
+curl -s -X POST http://127.0.0.1:8766/v1/play \
+  -H "Content-Type: application/json" \
+  -d "{\"wav_files\":[{\"name\":\"test.wav\",\"data\":\"$WAV\"}],\"priority\":\"high\",\"volume\":1.0}"
+```
+
+## Package Build
+
+Maintainer build requirements: `uv`, `nfpm`, and a local Python 3.11+ interpreter for the build script.
+
+```shell
+python -m tools.build_sendspin_service_deb
+```
+
+Build for a specific architecture on a matching runner:
+
+```shell
+python -m tools.build_sendspin_service_deb --architecture arm64
+```
+
+For local install testing, copy the `.deb` to `/tmp` first so `apt` can read it through its `_apt` sandbox user:
+
+```shell
+rm -f /tmp/sendspin-service_*.deb
+cp dist/sendspin-service_*_amd64.deb /tmp/
+sudo apt install /tmp/sendspin-service_*_amd64.deb
+```
+
+Reinstall the same local version:
+
+```shell
+sudo apt install --reinstall /tmp/sendspin-service_*_amd64.deb
+```
+
+Package CI:
+
+- Pull requests that touch service/package files build the `amd64` `.deb` through `.github/workflows/build.yaml`.
+- Published GitHub Releases build and upload both `amd64` and `arm64` `.deb` assets through `.github/workflows/release.yaml`.
+- The shared build logic lives in `.github/actions/build-sendspin-deb/action.yaml`.
+
+## Callouts
+
+Race Voice hooks into two RotorHazard filter events and generates the following callouts automatically while plugin audio is enabled:
+
+| Event | Callout | Priority |
+|---|---|---|
+| Pilot completes a lap | `"{callsign}, Lap {n}, {m:ss.f}"` | Normal |
+| Race winner announced | `"Winner is {callsign}!"` (or localized equivalent) | High |
+| Scheduled race countdown | `"Race begin in 60 seconds"` / `"30"` / `"10"` / `"5"` | High |
+
+Lap 0 (first crossing without a completed lap) does not produce a callout. Winner callouts are generated from the RotorHazard phonetic text filter, which fires when RotorHazard determines the race winner.
+
+Countdown callouts are generated when a race is scheduled via the RotorHazard schedule panel. They are cancelled automatically if the schedule is replaced or cancelled before the race starts.
+
+The callsign used in a lap callout is the pilot's **phonetic name** if set, otherwise the **callsign**. Set phonetic names in the RotorHazard pilot list for better pronunciation with the selected voice model.
 
 ## Browser Player
 
-The built-in browser player is served by the plugin at `/player`. It connects to Sendspin over WebSocket and plays streamed PCM audio in the browser.
+The Sendspin browser player connects to `sendspin-service` and plays synchronized audio. Open it at `<RotorHazard UI base URL>/player` on the playback device, or at `http://<container-host>:8766/` when using the Docker image.
 
-During local testing, Safari on macOS produced the smoothest browser playback. Chrome can work well too, but browser extensions may add console noise or small timing interruptions. If playback jitter appears in Chrome, test once in an incognito window with extensions disabled before debugging the server.
+Multiple devices can connect simultaneously and will receive the same audio in sync.
+
+### Connecting
+
+1. Open the player URL on the playback device.
+2. Confirm the **Server URL** in the player points to the `sendspin-service` HTTP endpoint (default `http://<timingserver>:8927`).
+3. Press **Connect**. The status badge shows **Ready** when the player is connected.
+
+The player stores the server URL in the browser's local storage and reconnects automatically if the connection drops.
+
+### Sync modes
+
+| Mode | Description | Best for |
+|---|---|---|
+| **Sync** | Sample-level correction via small buffer resets | Local wired or fast Wi-Fi networks |
+| **Quality** | Gradual playback-rate adjustment | Tolerates network jitter; avoids audible resets |
+| **Quality local** | Uses device clock as reference | Offline or unreliable connections |
+
+Use **Sync** for most race-day setups. Switch to **Quality** if playback resets are audible on the local network.
+
+### Controls
+
+- **Volume / Mute**: adjusts local playback volume and mutes the output. Settings are stored per device.
+- **Share**: shows a QR code and URL for the player page. Useful for distributing the player link to spectators at the event.
+- **Diagnostics**: expands a panel with stream format, time-sync state, sync error, output latency, correction method, and playback rate. Useful for debugging sync issues.
+
+### WindowsSpin
+
+[WindowsSpin](https://github.com/sendspin/windowsspin) is a native Windows application that connects to the same Sendspin stream. Configure it with the `sendspin-service` host and port (`8927` by default). It will receive the same synchronized audio as the browser player.
+
+## Settings
+
+### Options
+
+- **Enable plugin audio**: Turns Race Voice callout generation on or off.
+- **Sendspin service URL**: HTTP endpoint for `sendspin-service`. Default: `http://127.0.0.1:8766` when the plugin and service run on the same host.
+- **Sendspin service timeout**: HTTP timeout for queue/stop requests to `sendspin-service`.
+- **Voice model**: Piper voice model. Models are downloaded once and reused.
+- **Speech speed**: Speaking rate. `1.0` is Piper default. Range: `0.5`–`2.0`.
+- **Noise scale**: Voice variation. `0.0` is monotone, `1.0` is expressive. Default: `0.667`.
+- **Phoneme width noise**: Duration variation between phonemes. `0.0` is uniform, `1.0` is varied. Default: `0.8`.
+- **Test phrase**: Phrase generated by the **Generate test phrase** button.
+
+### Quick buttons
+
+- **Generate test phrase**: Synthesizes the test phrase with the current voice settings and sends it to the Sendspin service. Use this to verify end-to-end audio before race day.
+- **Play audio check**: Plays a bundled demo WAV without synthesizing TTS. Confirms `sendspin-service` is reachable and clients receive audio even if no voice model is loaded yet.
+- **Stop audio**: Immediately stops all queued and active audio on the Sendspin service. Useful when a callout needs to be cut mid-playback.
+- **Clear TTS cache**: Removes all generated WAV files. Use after a voice model change to avoid stale audio from the previous model.
+- **Rebuild pre-cache**: Pre-generates WAV files for the current heat's pilot names, lap segments, and schedule phrases. Run this after startup or after changing voice settings so common phrases are ready before racing starts.
 
 ## Cache Layout
 
-Local Voice stores generated files under the RotorHazard data directory:
+Generated files live under the RotorHazard data directory:
 
 ```text
-local_voice_cache/
+race_voice_cache/
   models/                 downloaded Piper ONNX models
-  tts/<model>/            normal cached phrases
-  tts/<model>/precache/pilots/
-                           pre-generated pilot-name segments
-  tts/<model>/precache/laps/
-                           pre-generated "Lap [n]" segments
-  tts/<model>/precache/schedule/
-                           scheduled-race countdown phrases
+  tts/<model>/            cached phrases
+  tts/<model>/precache/   reusable pilot, lap, and schedule phrases
   tts/<model>/tmp/        ephemeral lap-time phrases
   tts/<model>/test/       generated test phrases
 ```
 
-Cache behavior:
-
-- `tmp/` is cleared whenever a heat is selected.
-- `precache/` keeps existing reusable phrases. Use **Rebuild pre-cache** to generate schedule phrases, current-heat pilot-name segments, and lap-number segments on demand.
-- `tmp/` and `precache/` are cleared on RotorHazard data reset.
-- **Clear TTS cache** removes all WAV files for the selected model.
-
-## Operational Notes
-
-- Local Voice does not disable RotorHazard's built-in browser speech. Set Voice Volume to `0` on regular RotorHazard browser clients to avoid duplicate callouts.
-- The first use of a voice model requires internet access to download model files. Racing can run offline after the selected model has been cached.
-- Callouts are generated server-side; browser-specific RotorHazard voice settings do not affect Local Voice output.
-- If no Sendspin browser player is connected, generated audio is dropped and logged.
+Use **Rebuild pre-cache** after startup or voice setting changes to prepare current-heat pilot names, lap segments, and schedule phrases.
 
 ## Troubleshooting
 
-- **No audio in the browser player**: confirm that `/player` is open, connected to the correct host, and that port `8927` is reachable from the playback device.
-- **Service is not reachable**: confirm `rh-sendspin-service` is running and `GET /health` works on `http://127.0.0.1:8766`.
-- **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in all regular RotorHazard browser clients.
-- **First phrase is slow**: the selected Piper model may be downloading or loading. Watch the RotorHazard log for Local Voice status messages.
-- **Browser playback stutters**: try Safari or a Chrome incognito window with extensions disabled, then validate on the actual race network.
+- **No audio in `/player`**: confirm `sendspin-service` is running, the player Server URL points at the same service RotorHazard sends to, and the player is connected.
+- **Service unreachable**: confirm `curl http://127.0.0.1:8766/health` works from the RotorHazard host.
+- **Player page unreachable**: confirm `<RotorHazard UI base URL>/player` works from the playback device.
+- **Duplicate voice callouts**: set RotorHazard Voice Volume to `0` in regular RotorHazard browser clients.
+- **First phrase is slow**: the selected Piper model may still be downloading or loading.
+- **Browser playback stutters**: test Safari or Chrome incognito with extensions disabled, then validate on the race network.

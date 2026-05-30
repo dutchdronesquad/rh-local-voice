@@ -554,13 +554,19 @@ export function App() {
 
         {/* Header */}
         <header className="flex items-center gap-3 border-b border-border px-5 py-4">
-          <div
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: "var(--orange-dim)", color: "var(--color-primary)" }}
-            aria-hidden="true"
-          >
-            <PlayIcon className="size-[18px]" fill="currentColor" strokeWidth={0} />
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: "var(--orange-dim)", color: "var(--color-primary)" }}
+              >
+                <PlayIcon className="size-[18px]" fill="currentColor" strokeWidth={0} />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {import.meta.env.VITE_SERVICE_VERSION ?? "dev"}
+            </TooltipContent>
+          </Tooltip>
           <div className="min-w-0 flex-1">
             <h1 className="text-[0.95rem] font-semibold leading-tight text-foreground">Sendspin Player</h1>
             <p className="text-[0.72rem] text-muted-foreground">Synchronized live audio</p>
@@ -811,7 +817,7 @@ export function App() {
 
         {/* Footer */}
         <footer className="border-t border-border bg-card px-5 py-[0.55rem] text-center text-[0.68rem] text-muted-foreground/70">
-          Powered by{" "}
+          {"Powered by "}
           <a
             href="https://www.sendspin-audio.com/"
             target="_blank"
@@ -820,7 +826,7 @@ export function App() {
           >
             Sendspin
           </a>
-          {" "}and{" "}
+          {" and "}
           <a
             href="https://www.openhomefoundation.org/"
             target="_blank"

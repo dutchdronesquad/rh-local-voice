@@ -399,7 +399,7 @@ class SendSpinServer:
                 volume=volume,
             )
         elif play_start_us is None or play_start_us <= now_us:
-            play_start_us = now_us + int(_INITIAL_PLAYBACK_DELAY_S * 1_000_000)
+            play_start_us = now_us + _group_lead_time_us(group)
         if self._would_start_after_expiry(play_start_us, now_us, expires_at):
             logger.info(
                 "Sendspin service dropped stale audio before Sendspin scheduling"
@@ -550,6 +550,29 @@ def _handle_loop_exception(
         )
         return
     loop.default_exception_handler(context)
+
+
+def _group_lead_time_us(group: SendspinGroup) -> int:
+    """Return the max required lead time across all players in the group.
+
+    Falls back to _INITIAL_PLAYBACK_DELAY_S when the player role or timing
+    data is unavailable (e.g. old clients or before the role is negotiated).
+    Result is in microseconds.
+    """
+    floor = int(_INITIAL_PLAYBACK_DELAY_S * 1_000_000)
+    try:
+        role = group.group_role("player")
+        if role is None:
+            return floor
+        lead_times = [
+            active_role.get_required_lead_time_us()
+            for client in role.get_player_clients()
+            for active_role in client.active_roles
+            if hasattr(active_role, "get_required_lead_time_us")
+        ]
+        return max(floor, *lead_times) if lead_times else floor
+    except Exception:
+        return floor
 
 
 def _scheduled_play_start_us(play_at: float, now_us: int) -> int:

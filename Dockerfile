@@ -1,10 +1,14 @@
 # syntax=docker/dockerfile:1.24
 
 ARG PYTHON_VERSION=3.13
+ARG SERVICE_VERSION=0.0.0+dev
 
 FROM ghcr.io/astral-sh/uv:0.11.17 AS uv
 
 FROM node:24-bookworm-slim AS player-build
+
+ARG SERVICE_VERSION
+ENV VITE_SERVICE_VERSION=${SERVICE_VERSION}
 
 WORKDIR /build/sendspin_player
 
@@ -16,7 +20,7 @@ RUN npm run build
 
 FROM python:${PYTHON_VERSION}-alpine
 
-ARG SERVICE_VERSION=0.0.0+dev
+ARG SERVICE_VERSION
 
 LABEL org.opencontainers.image.title="Sendspin Service"
 LABEL org.opencontainers.image.description="Standalone Sendspin playback service with HTTP ingest API"

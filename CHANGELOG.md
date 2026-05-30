@@ -4,6 +4,35 @@ All notable shipped changes to Race Voice should be documented in this file.
 
 This changelog is intentionally concise. GitHub Releases can carry the fuller change list and release assets.
 
+## [1.0.0] - 2026-05-30
+
+### Plugin renamed to Race Voice
+
+The plugin has been renamed from Local Voice to Race Voice. All configuration keys, file paths, and references have been updated accordingly.
+
+### Standalone Sendspin service
+
+The Sendspin service now runs as a separate process, decoupled from the RotorHazard plugin. Each release ships two artifacts:
+
+**Debian package** — the primary deployment target. Install this on the same Raspberry Pi as the race timer. It runs headless alongside RotorHazard and receives audio from the plugin over the local ingest API (port 8766).
+
+**Docker image** — intended for running the service on a separate machine, such as a cloud relay for remote listeners. The Docker image bundles the browser player so listeners can open it directly from the container.
+
+```
+docker run -p 8766:8766 -p 8927:8927 ghcr.io/dutchdronesquad/rh-race-voice:latest
+```
+
+### Redesigned browser player
+
+The built-in browser player has been fully rewritten in React with a dark-themed component library. The new player includes:
+
+- Animated status ring that pulses during playback
+- Audio visualizer driven by the live PCM stream
+- Sync mode selector (Sync, Quality, Quality local) with per-mode descriptions
+- Diagnostics panel showing format, clock sync status, sync error, output latency, correction method, and playback rate
+- Scrollable activity log with colour-coded playback and warning events
+- Share button that generates a QR code so other devices can join the same audio session
+
 ## [0.2.0] - 2026-05-24
 
 ### Scheduled race callouts

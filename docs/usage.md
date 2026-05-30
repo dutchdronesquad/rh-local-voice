@@ -17,13 +17,12 @@ The plugin ZIP and service `.deb` are separate release assets. Install both for 
 
 ## Sendspin Service
 
-Install target:
+Download the `.deb` for your architecture from the [GitHub Releases page](https://github.com/dutchdronesquad/rh-race-voice/releases). Use `arm64` for 64-bit Raspberry Pi OS (the default since Raspberry Pi OS Bookworm) and `amd64` for x86 machines.
 
 ```shell
-sudo apt install ./sendspin-service_0.1.0_arm64.deb
+wget https://github.com/dutchdronesquad/rh-race-voice/releases/download/v<version>/sendspin-service_<version>_arm64.deb
+sudo apt install ./sendspin-service_<version>_arm64.deb
 ```
-
-Download the matching package from the GitHub Release assets. Use `arm64` for 64-bit Raspberry Pi OS and `amd64` for Ubuntu/laptop testing.
 
 Common checks:
 
